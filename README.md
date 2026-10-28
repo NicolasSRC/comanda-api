@@ -115,6 +115,12 @@ Servicios:
 El contenedor de la API aplica las migraciones al arrancar. Con `RUN_SEED=true`
 (valor por defecto en Compose) también carga el restaurante demo.
 
+> El proyecto Compose conserva el nombre `comanda` mediante
+> `COMPOSE_PROJECT_NAME=comanda` en `.env`. Así se reutilizan el volumen y los
+> contenedores existentes aunque la carpeta del repositorio se llame
+> `comanda-api`. Si cambias ese valor, Compose creará un proyecto y un volumen
+> nuevos.
+
 ### Credenciales del seed
 
 | Rol           | Correo                   | Contraseña       |
