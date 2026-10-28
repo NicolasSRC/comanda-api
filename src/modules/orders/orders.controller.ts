@@ -1,9 +1,17 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { ApiPaginatedResponse } from '../../common/swagger/api-response.decorators';
+import { OrderItemModel, OrderListItemModel, OrderModel } from '../../common/swagger/orders.models';
 import {
   AddOrderItemsDto,
   CancelOrderItemDto,
@@ -23,7 +31,8 @@ export class OrdersController {
 
   @Post()
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Crear un pedido con ítems y precios congelados (RF-40/RF-42)' })
+  @ApiOperation({ summary: 'Crear un pedido con ítems y precios congelados' })
+  @ApiCreatedResponse({ type: OrderModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateOrderDto) {
     return this.orders.create(actor, dto);
   }
@@ -31,6 +40,7 @@ export class OrdersController {
   @Get()
   @Roles(Role.ADMIN, Role.WAITER)
   @ApiOperation({ summary: 'Listar pedidos con filtros por mesa y estado' })
+  @ApiPaginatedResponse(OrderListItemModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryOrdersDto) {
     return this.orders.list(actor, query);
   }
@@ -38,13 +48,15 @@ export class OrdersController {
   @Get(':id')
   @Roles(Role.ADMIN, Role.WAITER)
   @ApiOperation({ summary: 'Obtener el detalle de un pedido con sus totales' })
+  @ApiOkResponse({ type: OrderModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.orders.findOne(actor, id);
   }
 
   @Post(':id/items')
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Agregar ítems a un pedido abierto (RF-43)' })
+  @ApiOperation({ summary: 'Agregar ítems a un pedido abierto' })
+  @ApiCreatedResponse({ type: OrderModel })
   addItems(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -55,7 +67,8 @@ export class OrdersController {
 
   @Patch(':id/items/:itemId/estado')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN)
-  @ApiOperation({ summary: 'Cambiar el estado de un ítem (RF-45)' })
+  @ApiOperation({ summary: 'Cambiar el estado de un ítem' })
+  @ApiOkResponse({ type: OrderItemModel })
   changeItemStatus(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -67,7 +80,8 @@ export class OrdersController {
 
   @Post(':id/items/:itemId/cancelar')
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Cancelar un ítem con motivo (RF-44)' })
+  @ApiOperation({ summary: 'Cancelar un ítem con motivo' })
+  @ApiCreatedResponse({ type: OrderItemModel })
   cancelItem(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -79,7 +93,8 @@ export class OrdersController {
 
   @Post(':id/mover')
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Mover un pedido abierto a otra mesa (RF-33)' })
+  @ApiOperation({ summary: 'Mover un pedido abierto a otra mesa' })
+  @ApiCreatedResponse({ type: OrderModel })
   move(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -90,7 +105,8 @@ export class OrdersController {
 
   @Post(':id/unir')
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Unir los ítems de un pedido en otro (RF-33)' })
+  @ApiOperation({ summary: 'Unir los ítems de un pedido en otro' })
+  @ApiCreatedResponse({ type: OrderModel })
   merge(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,

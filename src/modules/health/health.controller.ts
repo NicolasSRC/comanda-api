@@ -1,6 +1,7 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
+import { HealthResponseModel } from '../../common/swagger/health.models';
 import { HealthService } from './health.service';
 
 @ApiTags('Salud')
@@ -11,6 +12,7 @@ export class HealthController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'Estado de la API y de la base de datos' })
+  @ApiOkResponse({ type: HealthResponseModel })
   async check() {
     const databaseUp = await this.healthService.isDatabaseUp();
 

@@ -52,7 +52,7 @@ describe('AccountCalculatorService', () => {
     expect(result.total).toBe(52_000);
   });
 
-  it('reproduce el ejemplo de la especificación: 10 % descuento, 19 % IVA y 10 % propina', () => {
+  it('reproduce un ejemplo conocido: 10 % descuento, 19 % IVA y 10 % propina', () => {
     const result = calculator.calculate(
       input({
         items: [item({ lineTotal: 48_000, quantity: 2, unitPrice: 24_000 })],

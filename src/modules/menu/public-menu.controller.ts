@@ -1,6 +1,7 @@
 import { Controller, Get, Param } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
+import { PublicMenuModel } from '../../common/swagger/menu.models';
 import { MenuService } from './menu.service';
 
 @ApiTags('Carta pública')
@@ -11,6 +12,7 @@ export class PublicMenuController {
   @Public()
   @Get(':restauranteSlug/carta')
   @ApiOperation({ summary: 'Carta publicada de solo lectura para QR o web' })
+  @ApiOkResponse({ type: PublicMenuModel })
   getPublicMenu(@Param('restauranteSlug') restauranteSlug: string) {
     return this.menu.getPublicMenu(restauranteSlug);
   }

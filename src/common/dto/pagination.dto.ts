@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
-/** Paginación común a todos los listados (REQUERIMIENTOS.md §5.3). */
+/** Paginación común a todos los listados. */
 export class PaginationQueryDto {
   @IsOptional()
   @Type(() => Number)

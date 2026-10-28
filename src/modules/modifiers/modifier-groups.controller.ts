@@ -9,11 +9,22 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import {
+  ApiArrayResponse,
+  ApiPaginatedResponse,
+} from '../../common/swagger/api-response.decorators';
+import { ModifierGroupModel, ModifierModel } from '../../common/swagger/catalog.models';
 import {
   CreateModifierDto,
   CreateModifierGroupDto,
@@ -32,6 +43,7 @@ export class ModifierGroupsController {
 
   @Post()
   @ApiOperation({ summary: 'Crear un grupo de modificadores' })
+  @ApiCreatedResponse({ type: ModifierGroupModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateModifierGroupDto) {
     return this.groups.create(actor, dto);
   }
@@ -39,6 +51,7 @@ export class ModifierGroupsController {
   @Get()
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Listar grupos de modificadores' })
+  @ApiPaginatedResponse(ModifierGroupModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryModifierGroupsDto) {
     return this.groups.list(actor, query);
   }
@@ -46,12 +59,14 @@ export class ModifierGroupsController {
   @Get(':id')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Obtener un grupo con sus modificadores' })
+  @ApiOkResponse({ type: ModifierGroupModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.groups.findOne(actor, id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar un grupo de modificadores' })
+  @ApiOkResponse({ type: ModifierGroupModel })
   update(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -62,6 +77,7 @@ export class ModifierGroupsController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Desactivar un grupo (soft delete)' })
+  @ApiOkResponse({ type: ModifierGroupModel })
   deactivate(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -72,6 +88,7 @@ export class ModifierGroupsController {
   @Get(':id/modificadores')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Listar los modificadores del grupo' })
+  @ApiArrayResponse(ModifierModel)
   listModifiers(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -81,6 +98,7 @@ export class ModifierGroupsController {
 
   @Post(':id/modificadores')
   @ApiOperation({ summary: 'Crear un modificador con costo extra' })
+  @ApiCreatedResponse({ type: ModifierModel })
   createModifier(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -91,6 +109,7 @@ export class ModifierGroupsController {
 
   @Patch(':id/modificadores/:modifierId')
   @ApiOperation({ summary: 'Editar un modificador' })
+  @ApiOkResponse({ type: ModifierModel })
   updateModifier(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -102,6 +121,7 @@ export class ModifierGroupsController {
 
   @Delete(':id/modificadores/:modifierId')
   @ApiOperation({ summary: 'Desactivar un modificador (soft delete)' })
+  @ApiOkResponse({ type: ModifierModel })
   deactivateModifier(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,

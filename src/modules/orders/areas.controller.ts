@@ -4,6 +4,8 @@ import { PreparationArea, Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { ApiPaginatedResponse } from '../../common/swagger/api-response.decorators';
+import { QueueItemModel } from '../../common/swagger/orders.models';
 import { QueryAreaItemsDto } from './dto/order.dto';
 import { OrdersService } from './orders.service';
 
@@ -15,7 +17,8 @@ export class AreasController {
   constructor(private readonly orders: OrdersService) {}
 
   @Get(':area/items-pendientes')
-  @ApiOperation({ summary: 'Cola de preparación del área ordenada por antigüedad (RF-47)' })
+  @ApiOperation({ summary: 'Cola de preparación del área ordenada por antigüedad' })
+  @ApiPaginatedResponse(QueueItemModel)
   queue(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('area', new ParseEnumPipe(PreparationArea)) area: PreparationArea,

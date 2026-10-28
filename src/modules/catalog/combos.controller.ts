@@ -9,11 +9,19 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { ApiPaginatedResponse } from '../../common/swagger/api-response.decorators';
+import { ComboModel } from '../../common/swagger/catalog.models';
 import { CombosService } from './combos.service';
 import { CreateComboDto, QueryCombosDto, UpdateComboDto } from './dto/combo.dto';
 
@@ -26,6 +34,7 @@ export class CombosController {
 
   @Post()
   @ApiOperation({ summary: 'Crear un combo con sus productos' })
+  @ApiCreatedResponse({ type: ComboModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateComboDto) {
     return this.combos.create(actor, dto);
   }
@@ -33,6 +42,7 @@ export class CombosController {
   @Get()
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Listar combos' })
+  @ApiPaginatedResponse(ComboModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryCombosDto) {
     return this.combos.list(actor, query);
   }
@@ -40,12 +50,14 @@ export class CombosController {
   @Get(':id')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Obtener un combo' })
+  @ApiOkResponse({ type: ComboModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.combos.findOne(actor, id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar un combo o reemplazar sus productos' })
+  @ApiOkResponse({ type: ComboModel })
   update(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -56,6 +68,7 @@ export class CombosController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Desactivar un combo (soft delete)' })
+  @ApiOkResponse({ type: ComboModel })
   deactivate(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,

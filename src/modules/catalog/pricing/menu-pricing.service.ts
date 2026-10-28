@@ -221,7 +221,7 @@ export class MenuPricingService {
         this.matchesSchedule(rule.daysOfWeek, rule.startTime, rule.endTime, input.now),
       )
       .sort((a, b) => {
-        // Mayor prioridad primero (orden documentado en la especificación);
+        // Mayor prioridad primero (orden definido por la regla de negocio);
         // a igual prioridad gana la regla de variante y luego la ventana más
         // específica.
         if (a.priority !== b.priority) {

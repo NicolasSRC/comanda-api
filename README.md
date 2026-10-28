@@ -1,17 +1,9 @@
-# Comanda API
+﻿# Comanda API
 
 API multi-restaurante para gestionar cartas personalizables, pedidos, cuentas y reportes en restaurantes y bares.
 
-> Especificación funcional: [`REQUERIMIENTOS.md`](./REQUERIMIENTOS.md).
-> Especificación técnica y estado por fase: [`ESPECIFICACION.md`](./ESPECIFICACION.md).
 > Frontend: [`NicolasSRC/comanda-web`](https://github.com/NicolasSRC/comanda-web).
-> Estado: **Fase 5 — Reportes y auditoría** completada (ventas, productos,
-> meseros, caja, tiempos de preparación, CSV y registro de acciones sensibles)
-> sobre las fases 1 (auth, roles y multi-tenant), 2 (carta, precios y
-> disponibilidad), 3 (zonas, mesas y pedidos) y 4 (cuentas, impuestos, propina,
-> descuentos, pagos y anulación). La **Fase 6** ya incluye el flujo SSE de
-> pedidos y el frontend separado; quedan pendientes la cobertura ≥ 70 %, los logs
-> estructurados y las pruebas de carga.
+> Documentación interactiva: <http://localhost:3000/docs>.
 
 ---
 
@@ -40,13 +32,13 @@ curl http://localhost:3000/health
 # {"status":"ok","database":"up",...}
 ```
 
-| Recurso | URL |
-| ------- | --- |
-| API | <http://localhost:3000> |
-| Swagger UI | <http://localhost:3000/docs> |
-| OpenAPI JSON | <http://localhost:3000/docs/json> |
-| Health | <http://localhost:3000/health> |
-| Carta demo | <http://localhost:3000/publico/demo/carta> |
+| Recurso      | URL                                        |
+| ------------ | ------------------------------------------ |
+| API          | <http://localhost:3000>                    |
+| Swagger UI   | <http://localhost:3000/docs>               |
+| OpenAPI JSON | <http://localhost:3000/docs/json>          |
+| Health       | <http://localhost:3000/health>             |
+| Carta demo   | <http://localhost:3000/publico/demo/carta> |
 
 El contenedor aplica migraciones y, con `RUN_SEED=true` (por defecto), carga el
 restaurante `demo` y los usuarios de prueba.
@@ -68,14 +60,14 @@ así que no hace falta configurar CORS en desarrollo.
 
 ### 3. Recorrer la aplicación
 
-| Qué ver | URL | Credenciales |
-| ------- | --- | ------------ |
-| Carta pública | <http://localhost:5173/> | Sin sesión |
-| Login | <http://localhost:5173/login> | Ver credenciales del seed |
-| Mesas y pedidos | <http://localhost:5173/app/mesas> | `admin@demo.com` / `Admin123!` o `mesero@demo.com` / `Mesero123!` |
-| Cocina y barra | <http://localhost:5173/app/cocina> | `cocina@demo.com` / `Cocina123!` |
-| Caja | <http://localhost:5173/app/caja> | `cajero@demo.com` / `Cajero123!` |
-| Reportes | <http://localhost:5173/app/reportes> | `admin@demo.com` / `Admin123!` |
+| Qué ver         | URL                                  | Credenciales                                                      |
+| --------------- | ------------------------------------ | ----------------------------------------------------------------- |
+| Carta pública   | <http://localhost:5173/>             | Sin sesión                                                        |
+| Login           | <http://localhost:5173/login>        | Ver credenciales del seed                                         |
+| Mesas y pedidos | <http://localhost:5173/app/mesas>    | `admin@demo.com` / `Admin123!` o `mesero@demo.com` / `Mesero123!` |
+| Cocina y barra  | <http://localhost:5173/app/cocina>   | `cocina@demo.com` / `Cocina123!`                                  |
+| Caja            | <http://localhost:5173/app/caja>     | `cajero@demo.com` / `Cajero123!`                                  |
+| Reportes        | <http://localhost:5173/app/reportes> | `admin@demo.com` / `Admin123!`                                    |
 
 Flujo sugerido: abre una mesa y agrega productos como mesero, avanza los ítems
 como cocina en otra pestaña, comprueba la actualización en vivo, cobra y cierra
@@ -100,10 +92,8 @@ La guía detallada del frontend está en el
 | Pruebas             | **Vitest + Supertest**                                    | Rápido con TypeScript; unitarias y e2e                                            |
 | Contenedores        | **Docker + Docker Compose**                               | `docker compose up` levanta API y PostgreSQL                                      |
 | Tiempo real         | **SSE** (`GET /eventos/pedidos`)                          | Una sola dirección, reconexión automática y más simple que WebSocket              |
-| Frontend            | **React 19 + Vite + TypeScript** en `comanda-web`          | Repositorio independiente; consume la API por HTTP y SSE                          |
-| Código              | Identificadores en inglés, rutas/mensajes/docs en español | Coincide con los endpoints de la especificación                                   |
-
-Estas decisiones corresponden a la sección 10 de `REQUERIMIENTOS.md`.
+| Frontend            | **React 19 + Vite + TypeScript** en `comanda-web`         | Repositorio independiente; consume la API por HTTP y SSE                          |
+| Código              | Identificadores en inglés, rutas/mensajes/docs en español | Consistencia entre el dominio y la API                                            |
 
 ---
 
@@ -129,7 +119,7 @@ flowchart LR
 ```text
 .
 ├── prisma/
-│   ├── schema.prisma          # Modelo de datos (Fases 1 a 5)
+│   ├── schema.prisma          # Modelo de datos
 │   ├── migrations/            # Migraciones versionadas
 │   └── seed.ts                # Demo: usuarios, carta, zonas, mesas, IVA y cuentas
 ├── src/
@@ -269,7 +259,7 @@ La regla general se aplica en dos capas:
 
 ---
 
-## Endpoints de la Fase 1
+## Endpoints de autenticación y usuarios
 
 | Método                  | Ruta                      | Rol          | Descripción                         |
 | ----------------------- | ------------------------- | ------------ | ----------------------------------- |
@@ -292,38 +282,38 @@ devuelve: debe enviarse por correo.
 
 ---
 
-## Endpoints de la Fase 2
+## Endpoints de carta
 
 Todas las rutas salvo la carta pública exigen `Authorization: Bearer <token>` y
 un usuario con restaurante. La carta se administra solo con `ADMIN`; los demás
 roles pueden leer categorías, productos, combos y modificadores.
 
-| Método             | Ruta                                          | Rol            | Descripción                                     |
-| ------------------ | --------------------------------------------- | -------------- | ----------------------------------------------- |
-| `GET/POST`         | `/categorias`                                 | `ADMIN` (POST) | Listar y crear categorías                       |
-| `GET/PATCH/DELETE` | `/categorias/:id`                             | `ADMIN`        | Detalle, edición y soft delete                  |
-| `GET/POST`         | `/productos`                                  | `ADMIN` (POST) | Listar con filtros y crear productos            |
-| `GET/PATCH/DELETE` | `/productos/:id`                              | `ADMIN`        | Detalle con variantes/modificadores y edición   |
-| `PATCH`            | `/productos/:id/disponibilidad`               | `ADMIN`        | Marcar agotado o disponible (RF-15)             |
-| `GET/POST`         | `/productos/:id/variantes`                    | `ADMIN` (POST) | Variantes con precio propio (RF-12)             |
-| `PATCH/DELETE`     | `/productos/:id/variantes/:variantId`         | `ADMIN`        | Edición y soft delete de variantes              |
-| `POST/DELETE`      | `/productos/:id/grupos-modificadores`         | `ADMIN`        | Asociar o quitar grupos de modificadores        |
-| `GET/POST`         | `/productos/:id/reglas-precio`                | `ADMIN`        | Precios por días y horario (RF-17)              |
-| `PATCH/DELETE`     | `/productos/:id/reglas-precio/:ruleId`        | `ADMIN`        | Edición y soft delete de reglas                 |
-| `GET/POST`         | `/productos/:id/disponibilidad`               | `ADMIN`        | Ventanas de disponibilidad (RF-16)              |
-| `DELETE`           | `/productos/:id/disponibilidad/:windowId`     | `ADMIN`        | Soft delete de una ventana                      |
-| `GET/POST`         | `/combos`                                     | `ADMIN` (POST) | Listar y crear combos con productos             |
-| `GET/PATCH/DELETE` | `/combos/:id`                                 | `ADMIN`        | Detalle, edición y soft delete                  |
-| `GET/POST`         | `/grupos-modificadores`                       | `ADMIN` (POST) | Grupos con mínimo/máximo de selecciones (RF-13) |
-| `GET/PATCH/DELETE` | `/grupos-modificadores/:id`                   | `ADMIN`        | Detalle, edición y soft delete                  |
-| `GET/POST`         | `/grupos-modificadores/:id/modificadores`     | `ADMIN` (POST) | Modificadores con costo extra (RF-14)           |
-| `PATCH/DELETE`     | `/grupos-modificadores/:id/modificadores/:id` | `ADMIN`        | Edición y soft delete de modificadores          |
-| `GET/POST`         | `/cartas`                                     | `ADMIN`        | Versiones de carta con snapshot (RF-19)         |
-| `GET`              | `/cartas/:id`                                 | `ADMIN`        | Versión con su snapshot completo                |
-| `POST`             | `/cartas/:id/publicar`                        | `ADMIN`        | Publica y archiva la anterior                   |
-| `POST`             | `/cartas/:id/duplicar`                        | `ADMIN`        | Duplica una versión como borrador               |
-| `GET`              | `/cartas/:id/previsualizar`                   | `ADMIN`        | Previsualiza incluyendo agotados                |
-| `GET`              | `/publico/:slug/carta`                        | Público        | Carta publicada de solo lectura (RF-20)         |
+| Método             | Ruta                                          | Rol            | Descripción                                   |
+| ------------------ | --------------------------------------------- | -------------- | --------------------------------------------- |
+| `GET/POST`         | `/categorias`                                 | `ADMIN` (POST) | Listar y crear categorías                     |
+| `GET/PATCH/DELETE` | `/categorias/:id`                             | `ADMIN`        | Detalle, edición y soft delete                |
+| `GET/POST`         | `/productos`                                  | `ADMIN` (POST) | Listar con filtros y crear productos          |
+| `GET/PATCH/DELETE` | `/productos/:id`                              | `ADMIN`        | Detalle con variantes/modificadores y edición |
+| `PATCH`            | `/productos/:id/disponibilidad`               | `ADMIN`        | Marcar agotado o disponible                   |
+| `GET/POST`         | `/productos/:id/variantes`                    | `ADMIN` (POST) | Variantes con precio propio                   |
+| `PATCH/DELETE`     | `/productos/:id/variantes/:variantId`         | `ADMIN`        | Edición y soft delete de variantes            |
+| `POST/DELETE`      | `/productos/:id/grupos-modificadores`         | `ADMIN`        | Asociar o quitar grupos de modificadores      |
+| `GET/POST`         | `/productos/:id/reglas-precio`                | `ADMIN`        | Precios por días y horario                    |
+| `PATCH/DELETE`     | `/productos/:id/reglas-precio/:ruleId`        | `ADMIN`        | Edición y soft delete de reglas               |
+| `GET/POST`         | `/productos/:id/disponibilidad`               | `ADMIN`        | Ventanas de disponibilidad                    |
+| `DELETE`           | `/productos/:id/disponibilidad/:windowId`     | `ADMIN`        | Soft delete de una ventana                    |
+| `GET/POST`         | `/combos`                                     | `ADMIN` (POST) | Listar y crear combos con productos           |
+| `GET/PATCH/DELETE` | `/combos/:id`                                 | `ADMIN`        | Detalle, edición y soft delete                |
+| `GET/POST`         | `/grupos-modificadores`                       | `ADMIN` (POST) | Grupos con mínimo/máximo de selecciones       |
+| `GET/PATCH/DELETE` | `/grupos-modificadores/:id`                   | `ADMIN`        | Detalle, edición y soft delete                |
+| `GET/POST`         | `/grupos-modificadores/:id/modificadores`     | `ADMIN` (POST) | Modificadores con costo extra                 |
+| `PATCH/DELETE`     | `/grupos-modificadores/:id/modificadores/:id` | `ADMIN`        | Edición y soft delete de modificadores        |
+| `GET/POST`         | `/cartas`                                     | `ADMIN`        | Versiones de carta con snapshot               |
+| `GET`              | `/cartas/:id`                                 | `ADMIN`        | Versión con su snapshot completo              |
+| `POST`             | `/cartas/:id/publicar`                        | `ADMIN`        | Publica y archiva la anterior                 |
+| `POST`             | `/cartas/:id/duplicar`                        | `ADMIN`        | Duplica una versión como borrador             |
+| `GET`              | `/cartas/:id/previsualizar`                   | `ADMIN`        | Previsualiza incluyendo agotados              |
+| `GET`              | `/publico/:slug/carta`                        | Público        | Carta publicada de solo lectura               |
 
 ### Reglas de precio y disponibilidad
 
@@ -345,25 +335,25 @@ roles pueden leer categorías, productos, combos y modificadores.
 
 ---
 
-## Endpoints de la Fase 3
+## Endpoints de pedidos
 
-| Método             | Ruta                                  | Rol                          | Descripción                                   |
-| ------------------ | ------------------------------------- | ---------------------------- | --------------------------------------------- |
-| `GET/POST`         | `/zonas`                              | `ADMIN`                      | Listar y crear zonas                          |
-| `GET/PATCH/DELETE` | `/zonas/:id`                          | `ADMIN`                      | Detalle, edición y baja lógica sin mesas      |
-| `GET/POST`         | `/mesas`                              | `ADMIN`, `WAITER`            | Listar con filtros y crear mesas              |
-| `GET`              | `/mesas/:id`                          | `ADMIN`, `WAITER`            | Mesa con zona y pedido abierto                |
-| `PATCH`            | `/mesas/:id`                          | `ADMIN`                      | Editar zona, nombre o capacidad               |
-| `POST`             | `/mesas/:id/abrir`                    | `ADMIN`, `WAITER`            | Abrir mesa con comensales y mesero (RF-32)    |
-| `POST`             | `/pedidos`                            | `ADMIN`, `WAITER`            | Crear pedido con ítems (RF-40/RF-42)          |
-| `GET`              | `/pedidos`                            | `ADMIN`, `WAITER`            | Listar con filtros `mesaId` y `estado`        |
-| `GET`              | `/pedidos/:id`                        | `ADMIN`, `WAITER`            | Detalle con ítems, modificadores y total      |
-| `POST`             | `/pedidos/:id/items`                  | `ADMIN`, `WAITER`            | Agregar ítems a un pedido abierto (RF-43)     |
-| `PATCH`            | `/pedidos/:id/items/:itemId/estado`   | `ADMIN`, `WAITER`, `KITCHEN` | Cambiar estado del ítem (RF-45)               |
-| `POST`             | `/pedidos/:id/items/:itemId/cancelar` | `ADMIN`, `WAITER`            | Cancelar con motivo (RF-44)                   |
-| `GET`              | `/areas/:area/items-pendientes`       | `ADMIN`, `KITCHEN`           | Cola por área ordenada por antigüedad (RF-47) |
-| `POST`             | `/pedidos/:id/mover`                  | `ADMIN`, `WAITER`            | Mover pedido a otra mesa libre (RF-33)        |
-| `POST`             | `/pedidos/:id/unir`                   | `ADMIN`, `WAITER`            | Unir ítems en otro pedido abierto (RF-33)     |
+| Método             | Ruta                                  | Rol                          | Descripción                              |
+| ------------------ | ------------------------------------- | ---------------------------- | ---------------------------------------- |
+| `GET/POST`         | `/zonas`                              | `ADMIN`                      | Listar y crear zonas                     |
+| `GET/PATCH/DELETE` | `/zonas/:id`                          | `ADMIN`                      | Detalle, edición y baja lógica sin mesas |
+| `GET/POST`         | `/mesas`                              | `ADMIN`, `WAITER`            | Listar con filtros y crear mesas         |
+| `GET`              | `/mesas/:id`                          | `ADMIN`, `WAITER`            | Mesa con zona y pedido abierto           |
+| `PATCH`            | `/mesas/:id`                          | `ADMIN`                      | Editar zona, nombre o capacidad          |
+| `POST`             | `/mesas/:id/abrir`                    | `ADMIN`, `WAITER`            | Abrir mesa con comensales y mesero       |
+| `POST`             | `/pedidos`                            | `ADMIN`, `WAITER`            | Crear pedido con ítems                   |
+| `GET`              | `/pedidos`                            | `ADMIN`, `WAITER`            | Listar con filtros `mesaId` y `estado`   |
+| `GET`              | `/pedidos/:id`                        | `ADMIN`, `WAITER`            | Detalle con ítems, modificadores y total |
+| `POST`             | `/pedidos/:id/items`                  | `ADMIN`, `WAITER`            | Agregar ítems a un pedido abierto        |
+| `PATCH`            | `/pedidos/:id/items/:itemId/estado`   | `ADMIN`, `WAITER`, `KITCHEN` | Cambiar estado del ítem                  |
+| `POST`             | `/pedidos/:id/items/:itemId/cancelar` | `ADMIN`, `WAITER`            | Cancelar con motivo                      |
+| `GET`              | `/areas/:area/items-pendientes`       | `ADMIN`, `KITCHEN`           | Cola por área ordenada por antigüedad    |
+| `POST`             | `/pedidos/:id/mover`                  | `ADMIN`, `WAITER`            | Mover pedido a otra mesa libre           |
+| `POST`             | `/pedidos/:id/unir`                   | `ADMIN`, `WAITER`            | Unir ítems en otro pedido abierto        |
 
 Contrato para crear un pedido:
 
@@ -404,21 +394,21 @@ Reglas operativas:
 
 ---
 
-## Endpoints de la Fase 4
+## Endpoints de cuentas
 
-| Método             | Ruta                                    | Rol                          | Descripción                                   |
-| ------------------ | --------------------------------------- | ---------------------------- | --------------------------------------------- |
-| `GET`              | `/cuentas?mesaId=`                      | `ADMIN`, `CASHIER`           | Cuenta abierta de una mesa                    |
-| `GET`              | `/cuentas/:id`                          | `ADMIN`, `CASHIER`, `WAITER` | Detalle con líneas, impuestos y totales       |
-| `POST`             | `/cuentas/:id/descuentos`               | `CASHIER`, `ADMIN`           | Descuento por ítem o por cuenta (RF-53)       |
-| `POST`             | `/cuentas/:id/propina`                  | `CASHIER`, `ADMIN`           | Aplicar, cambiar o retirar la propina (RF-52) |
-| `POST`             | `/cuentas/:id/pagos`                    | `CASHIER`                    | Pago total, parcial o mixto (RF-55)           |
-| `POST`             | `/cuentas/:id/divisiones`               | `CASHIER`                    | División por comensales o por ítems (RF-54)   |
-| `POST`             | `/cuentas/:id/cerrar`                   | `CASHIER`                    | Cerrar solo si está totalmente pagada (RF-56) |
-| `POST`             | `/cuentas/:id/anular`                   | `ADMIN`                      | Anular una cuenta cerrada con motivo (RF-57)  |
-| `GET/PATCH`        | `/restaurantes/me/configuracion-cuenta` | `ADMIN`                      | Impuestos, propina y umbral de descuentos     |
-| `GET/POST`         | `/impuestos`                            | `ADMIN`                      | Listar y crear impuestos (RF-51)              |
-| `GET/PATCH/DELETE` | `/impuestos/:id`                        | `ADMIN`                      | Detalle, edición y baja lógica                |
+| Método             | Ruta                                    | Rol                          | Descripción                               |
+| ------------------ | --------------------------------------- | ---------------------------- | ----------------------------------------- |
+| `GET`              | `/cuentas?mesaId=`                      | `ADMIN`, `CASHIER`           | Cuenta abierta de una mesa                |
+| `GET`              | `/cuentas/:id`                          | `ADMIN`, `CASHIER`, `WAITER` | Detalle con líneas, impuestos y totales   |
+| `POST`             | `/cuentas/:id/descuentos`               | `CASHIER`, `ADMIN`           | Descuento por ítem o por cuenta           |
+| `POST`             | `/cuentas/:id/propina`                  | `CASHIER`, `ADMIN`           | Aplicar, cambiar o retirar la propina     |
+| `POST`             | `/cuentas/:id/pagos`                    | `CASHIER`                    | Pago total, parcial o mixto               |
+| `POST`             | `/cuentas/:id/divisiones`               | `CASHIER`                    | División por comensales o por ítems       |
+| `POST`             | `/cuentas/:id/cerrar`                   | `CASHIER`                    | Cerrar solo si está totalmente pagada     |
+| `POST`             | `/cuentas/:id/anular`                   | `ADMIN`                      | Anular una cuenta cerrada con motivo      |
+| `GET/PATCH`        | `/restaurantes/me/configuracion-cuenta` | `ADMIN`                      | Impuestos, propina y umbral de descuentos |
+| `GET/POST`         | `/impuestos`                            | `ADMIN`                      | Listar y crear impuestos                  |
+| `GET/PATCH/DELETE` | `/impuestos/:id`                        | `ADMIN`                      | Detalle, edición y baja lógica            |
 
 La cuenta se crea automáticamente con el pedido. El detalle se calcula en vivo y
 los totales persistidos se sincronizan en cada cambio de ítems o movimiento
@@ -464,17 +454,17 @@ Reglas de cálculo y operación:
 
 ---
 
-## Endpoints de la Fase 5
+## Endpoints de reportes y auditoría
 
-| Método | Ruta                            | Rol                | Descripción                                         |
-| ------ | ------------------------------- | ------------------ | --------------------------------------------------- |
-| `GET`  | `/reportes/ventas`              | `ADMIN`            | Ventas por día, semana o mes (RF-60)                |
-| `GET`  | `/reportes/ventas.csv`          | `ADMIN`            | Exportación CSV del reporte de ventas (RF-66)       |
-| `GET`  | `/reportes/productos`           | `ADMIN`            | Más/menos vendidos y ventas por categoría (RF-61)   |
-| `GET`  | `/reportes/meseros`             | `ADMIN`            | Ventas agrupadas por mesero (RF-61)                 |
-| `GET`  | `/reportes/caja`                | `ADMIN`, `CASHIER` | Totales por método de pago y día (RF-65)            |
-| `GET`  | `/reportes/tiempos-preparacion` | `ADMIN`            | Tiempo promedio por área (RF-64)                    |
-| `GET`  | `/auditoria`                    | `ADMIN`            | Acciones sensibles con filtros y paginación (RF-71) |
+| Método | Ruta                            | Rol                | Descripción                                 |
+| ------ | ------------------------------- | ------------------ | ------------------------------------------- |
+| `GET`  | `/reportes/ventas`              | `ADMIN`            | Ventas por día, semana o mes                |
+| `GET`  | `/reportes/ventas.csv`          | `ADMIN`            | Exportación CSV del reporte de ventas       |
+| `GET`  | `/reportes/productos`           | `ADMIN`            | Más/menos vendidos y ventas por categoría   |
+| `GET`  | `/reportes/meseros`             | `ADMIN`            | Ventas agrupadas por mesero                 |
+| `GET`  | `/reportes/caja`                | `ADMIN`, `CASHIER` | Totales por método de pago y día            |
+| `GET`  | `/reportes/tiempos-preparacion` | `ADMIN`            | Tiempo promedio por área                    |
+| `GET`  | `/auditoria`                    | `ADMIN`            | Acciones sensibles con filtros y paginación |
 
 Filtros comunes de reportes:
 
@@ -498,7 +488,7 @@ Reglas de los reportes:
   ambos tiempos registrados.
 - El CSV incluye BOM UTF-8, encabezado, una fila por periodo y una fila `TOTAL`.
 
-Acciones auditadas (RF-70):
+Acciones auditadas:
 
 | Acción                  | Entidad     | Origen                          |
 | ----------------------- | ----------- | ------------------------------- |
@@ -520,11 +510,11 @@ El registro se escribe dentro de la misma transacción que la acción auditada.
 
 ---
 
-## Endpoints de la Fase 6
+## Tiempo real
 
-| Método | Ruta                     | Rol           | Descripción                                      |
-| ------ | ------------------------ | ------------- | ------------------------------------------------ |
-| `GET`  | `/eventos/pedidos?token=` | Autenticado   | Flujo SSE de pedidos, ítems y cuentas (RF-48)    |
+| Método | Ruta                      | Rol         | Descripción                           |
+| ------ | ------------------------- | ----------- | ------------------------------------- |
+| `GET`  | `/eventos/pedidos?token=` | Autenticado | Flujo SSE de pedidos, ítems y cuentas |
 
 ### Tiempo real por SSE
 
@@ -535,13 +525,13 @@ no permite enviar cabeceras, así que el access token viaja en la query
 
 Eventos publicados:
 
-| Evento          | Origen                                                        |
-| --------------- | ------------------------------------------------------------- |
-| `order.opened`  | Apertura de mesa o creación de pedido                         |
-| `items.created` | Ítems agregados a un pedido                                   |
-| `item.updated`  | Cambio de estado o cancelación de un ítem                     |
-| `order.updated` | Mover/unir pedidos, cierre o anulación de cuenta              |
-| `ping`          | Latido cada 25 s para conservar la conexión                   |
+| Evento          | Origen                                           |
+| --------------- | ------------------------------------------------ |
+| `order.opened`  | Apertura de mesa o creación de pedido            |
+| `items.created` | Ítems agregados a un pedido                      |
+| `item.updated`  | Cambio de estado o cancelación de un ítem        |
+| `order.updated` | Mover/unir pedidos, cierre o anulación de cuenta |
+| `ping`          | Latido cada 25 s para conservar la conexión      |
 
 Cada evento incluye `restaurantId`, `orderId`, `tableId`, `itemId`, `status` y
 `at`. El controlador filtra por el `restaurantId` del token, de modo que un
@@ -579,19 +569,17 @@ npm run test:e2e
 ```
 
 Por seguridad, `test/e2e/setup-env.ts` aborta si `DATABASE_URL` no contiene
-`test`. Las pruebas incluyen explícitamente el aislamiento entre restaurantes
-(RF-05), la resolución de precios, la carta pública, el flujo de pedidos, los
-reportes con fixtures de ventas conocidas y la auditoría de acciones sensibles.
+`test`. Las pruebas incluyen explícitamente el aislamiento entre restaurantes, la
+resolución de precios, la carta pública, el flujo de pedidos, los reportes con
+fixtures de ventas conocidas y la auditoría de acciones sensibles.
 
 Estado actual: **83 pruebas unitarias** y **59 pruebas e2e** en verde. La
 cobertura global se recalcula con `npm run test:cov`; los motores puros de
-cuentas, precios, estados, ítems y reportes concentran la mayor cobertura. El
-umbral del 70 % se activa en la Fase 6, cuando se complete el resto de la lógica
-de negocio.
+cuentas, precios, estados, ítems y reportes concentran la mayor cobertura.
 
 ---
 
-## Modelo de datos (Fases 1 a 5)
+## Modelo de datos
 
 ```mermaid
 erDiagram
@@ -644,30 +632,6 @@ Convenciones aplicadas desde el inicio:
   negatividad; los porcentajes se guardan en puntos base y se validan entre 0 y 10000.
 - `audit_logs` guarda `action`/`entity_type` como `VARCHAR`, `before`/`after`/
   `metadata` como `JSONB`, usuario opcional e índices por fecha, entidad y acción.
-
----
-
-## Hoja de ruta
-
-- [x] **Fase 1 — Base:** proyecto, Docker, PostgreSQL, migraciones, auth JWT con
-      refresh rotativo, roles, multi-tenant, seed y pruebas de aislamiento.
-- [x] **Fase 2 — Carta:** categorías, productos, variantes, modificadores,
-      disponibilidad, precios por horario, combos, versiones y carta pública.
-- [x] **Fase 3 — Pedidos:** zonas, mesas, pedidos, estados y enrutamiento a
-      cocina/barra, con snapshot de precios, cancelación, mover y unir.
-- [x] **Fase 4 — Cuentas:** impuestos configurables, propina, descuentos con
-      umbral, división por comensales/ítems, pagos mixtos, cierre y anulación.
-- [x] **Fase 5 — Reportes y auditoría:** ventas por día/semana/mes, productos y
-      categorías, meseros, caja por método de pago, tiempos de preparación, CSV y
-      registro de cancelaciones, descuentos, cambios de precio y anulaciones.
-- [ ] **Fase 6 — Pulido:**
-  - [x] SSE de pedidos e ítems (`GET /eventos/pedidos`).
-  - [x] Frontend React separado en
-        [`comanda-web`](https://github.com/NicolasSRC/comanda-web) con carta
-        pública, mesas, pedidos, cocina/barra, caja y reportes.
-  - [ ] Cobertura ≥ 70 % y umbrales activos.
-  - [ ] Logs estructurados y correlación de peticiones.
-  - [ ] Pruebas de carga y revisión final del contrato OpenAPI.
 
 ---
 

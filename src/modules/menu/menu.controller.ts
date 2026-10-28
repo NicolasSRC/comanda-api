@@ -9,11 +9,23 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { ApiPaginatedResponse } from '../../common/swagger/api-response.decorators';
+import {
+  MenuVersionDetailModel,
+  MenuVersionSummaryModel,
+  PublicMenuModel,
+} from '../../common/swagger/menu.models';
 import {
   CreateMenuVersionDto,
   DuplicateMenuVersionDto,
@@ -30,18 +42,21 @@ export class MenuController {
 
   @Post()
   @ApiOperation({ summary: 'Crear un borrador de carta con la configuración actual' })
+  @ApiCreatedResponse({ type: MenuVersionDetailModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateMenuVersionDto) {
     return this.menu.createVersion(actor, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Listar versiones de carta' })
+  @ApiPaginatedResponse(MenuVersionSummaryModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryMenuVersionsDto) {
     return this.menu.listVersions(actor, query);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una versión con su snapshot' })
+  @ApiOkResponse({ type: MenuVersionDetailModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.menu.findVersion(actor, id);
   }
@@ -49,12 +64,14 @@ export class MenuController {
   @Post(':id/publicar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Publicar una versión (archiva la anterior)' })
+  @ApiOkResponse({ type: MenuVersionSummaryModel })
   publish(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.menu.publish(actor, id);
   }
 
   @Post(':id/duplicar')
   @ApiOperation({ summary: 'Duplicar una versión como nuevo borrador' })
+  @ApiCreatedResponse({ type: MenuVersionDetailModel })
   duplicate(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -68,6 +85,7 @@ export class MenuController {
     summary: 'Previsualizar la carta (incluye productos agotados)',
     description: 'Mismo contrato que la carta pública, pero autenticado.',
   })
+  @ApiOkResponse({ type: PublicMenuModel })
   preview(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.menu.preview(actor, id);
   }

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 /**
- * Esquema de variables de entorno. Falla al arrancar si falta algo crítico
- * (REQUERIMIENTOS.md §5.1: secretos solo en variables de entorno).
+ * Esquema de variables de entorno. Falla al arrancar si falta algo crítico:
+ * los secretos solo viven en variables de entorno.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

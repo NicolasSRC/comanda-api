@@ -4,8 +4,7 @@ import type { AuthenticatedUser } from '../interfaces/authenticated-user.interfa
 /**
  * Devuelve el restaurante del token o lanza 403.
  *
- * El `restaurantId` nunca se toma del cuerpo, la URL ni un encabezado
- * (REQUERIMIENTOS.md RF-05).
+ * El `restaurantId` nunca se toma del cuerpo, la URL ni un encabezado.
  */
 export function requireRestaurantId(actor: AuthenticatedUser): string {
   if (!actor.restaurantId) {

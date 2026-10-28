@@ -1,9 +1,17 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { ApiPaginatedResponse } from '../../common/swagger/api-response.decorators';
+import { OrderModel, TableModel } from '../../common/swagger/orders.models';
 import { CreateTableDto, OpenTableDto, QueryTablesDto, UpdateTableDto } from './dto/table.dto';
 import { OrdersService } from './orders.service';
 import { TablesService } from './tables.service';
@@ -20,6 +28,7 @@ export class TablesController {
   @Get()
   @Roles(Role.ADMIN, Role.WAITER, Role.CASHIER)
   @ApiOperation({ summary: 'Listar mesas con su zona y pedido abierto' })
+  @ApiPaginatedResponse(TableModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryTablesDto) {
     return this.tables.list(actor, query);
   }
@@ -27,6 +36,7 @@ export class TablesController {
   @Get(':id')
   @Roles(Role.ADMIN, Role.WAITER, Role.CASHIER)
   @ApiOperation({ summary: 'Obtener una mesa' })
+  @ApiOkResponse({ type: TableModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.tables.findOne(actor, id);
   }
@@ -34,6 +44,7 @@ export class TablesController {
   @Post()
   @Roles(Role.ADMIN, Role.WAITER)
   @ApiOperation({ summary: 'Crear una mesa' })
+  @ApiCreatedResponse({ type: TableModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateTableDto) {
     return this.tables.create(actor, dto);
   }
@@ -41,6 +52,7 @@ export class TablesController {
   @Patch(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Editar una mesa' })
+  @ApiOkResponse({ type: TableModel })
   update(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -51,7 +63,8 @@ export class TablesController {
 
   @Post(':id/abrir')
   @Roles(Role.ADMIN, Role.WAITER)
-  @ApiOperation({ summary: 'Abrir la mesa creando un pedido abierto (RF-32)' })
+  @ApiOperation({ summary: 'Abrir la mesa creando un pedido abierto' })
+  @ApiCreatedResponse({ type: OrderModel })
   open(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,

@@ -332,7 +332,7 @@ describe('Cuentas, impuestos y configuración (e2e)', () => {
     ]);
   });
 
-  it('aplica descuento del 10 %, propina del 10 % y reproduce el ejemplo de la especificación', async () => {
+  it('aplica descuento del 10 %, propina del 10 % y reproduce un ejemplo conocido', async () => {
     const discounted = await request(app.getHttpServer())
       .post(`/cuentas/${account1Id}/descuentos`)
       .set('Authorization', `Bearer ${cashierAToken}`)

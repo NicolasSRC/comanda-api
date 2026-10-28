@@ -9,11 +9,28 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import {
+  ApiArrayResponse,
+  ApiPaginatedResponse,
+} from '../../common/swagger/api-response.decorators';
+import {
+  ProductDetailModel,
+  ProductListItemModel,
+  ProductModifierGroupModel,
+  VariantModel,
+} from '../../common/swagger/catalog.models';
+import { RemovedResponseModel } from '../../common/swagger/common.models';
 import { AssociateModifierGroupDto } from '../modifiers/dto/modifier.dto';
 import {
   CreateProductDto,
@@ -33,6 +50,7 @@ export class ProductsController {
 
   @Post()
   @ApiOperation({ summary: 'Crear un producto de la carta' })
+  @ApiCreatedResponse({ type: ProductDetailModel })
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateProductDto) {
     return this.products.create(actor, dto);
   }
@@ -40,6 +58,7 @@ export class ProductsController {
   @Get()
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Listar productos con filtros' })
+  @ApiPaginatedResponse(ProductListItemModel)
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryProductsDto) {
     return this.products.list(actor, query);
   }
@@ -47,12 +66,14 @@ export class ProductsController {
   @Get(':id')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Obtener un producto con variantes y modificadores' })
+  @ApiOkResponse({ type: ProductDetailModel })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.products.findOne(actor, id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Editar un producto' })
+  @ApiOkResponse({ type: ProductDetailModel })
   update(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -63,6 +84,7 @@ export class ProductsController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Desactivar un producto (soft delete)' })
+  @ApiOkResponse({ type: ProductDetailModel })
   deactivate(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -72,6 +94,7 @@ export class ProductsController {
 
   @Patch(':id/disponibilidad')
   @ApiOperation({ summary: 'Marcar el producto como agotado o disponible' })
+  @ApiOkResponse({ type: ProductDetailModel })
   setAvailability(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -83,6 +106,7 @@ export class ProductsController {
   @Get(':id/variantes')
   @Roles(Role.ADMIN, Role.WAITER, Role.KITCHEN, Role.CASHIER)
   @ApiOperation({ summary: 'Listar las variantes de un producto' })
+  @ApiArrayResponse(VariantModel)
   listVariants(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -92,6 +116,7 @@ export class ProductsController {
 
   @Post(':id/variantes')
   @ApiOperation({ summary: 'Crear una variante del producto' })
+  @ApiCreatedResponse({ type: VariantModel })
   createVariant(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -102,6 +127,7 @@ export class ProductsController {
 
   @Patch(':id/variantes/:variantId')
   @ApiOperation({ summary: 'Editar una variante del producto' })
+  @ApiOkResponse({ type: VariantModel })
   updateVariant(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -113,6 +139,7 @@ export class ProductsController {
 
   @Delete(':id/variantes/:variantId')
   @ApiOperation({ summary: 'Desactivar una variante (soft delete)' })
+  @ApiOkResponse({ type: VariantModel })
   deactivateVariant(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -123,6 +150,7 @@ export class ProductsController {
 
   @Post(':id/grupos-modificadores')
   @ApiOperation({ summary: 'Asociar un grupo de modificadores al producto' })
+  @ApiCreatedResponse({ type: ProductModifierGroupModel })
   associateModifierGroup(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -133,6 +161,7 @@ export class ProductsController {
 
   @Delete(':id/grupos-modificadores/:groupId')
   @ApiOperation({ summary: 'Quitar un grupo de modificadores del producto' })
+  @ApiOkResponse({ type: RemovedResponseModel })
   removeModifierGroup(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', new ParseUUIDPipe()) id: string,

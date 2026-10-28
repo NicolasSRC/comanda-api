@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -11,6 +12,12 @@ import type { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import {
+  ForgotPasswordResponseModel,
+  PublicUserModel,
+  SessionResponseModel,
+} from '../../common/swagger/auth.models';
+import { MessageResponseModel } from '../../common/swagger/common.models';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -29,6 +36,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesión con correo y contraseña' })
+  @ApiOkResponse({ type: SessionResponseModel })
   @ApiUnauthorizedResponse({ description: 'Credenciales inválidas' })
   @ApiTooManyRequestsResponse({ description: 'Demasiados intentos de inicio de sesión' })
   login(@Body() dto: LoginDto, @Req() request: Request) {
@@ -43,6 +51,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar el access token con rotación del refresh token' })
+  @ApiOkResponse({ type: SessionResponseModel })
   refresh(@Body() dto: RefreshTokenDto, @Req() request: Request) {
     return this.authService.refresh(dto.refreshToken, {
       ip: request.ip,
@@ -54,6 +63,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cerrar sesión y revocar la familia de refresh tokens' })
+  @ApiOkResponse({ type: MessageResponseModel })
   logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto.refreshToken);
   }
@@ -63,6 +73,7 @@ export class AuthController {
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Solicitar recuperación de contraseña' })
+  @ApiOkResponse({ type: ForgotPasswordResponseModel })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
@@ -72,6 +83,7 @@ export class AuthController {
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restablecer la contraseña con un token' })
+  @ApiOkResponse({ type: MessageResponseModel })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.token, dto.newPassword);
   }
@@ -79,6 +91,7 @@ export class AuthController {
   @ApiBearerAuth()
   @Get('me')
   @ApiOperation({ summary: 'Obtener el perfil del usuario autenticado' })
+  @ApiOkResponse({ type: PublicUserModel })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.id);
   }
@@ -87,6 +100,7 @@ export class AuthController {
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar la contraseña del usuario autenticado' })
+  @ApiOkResponse({ type: MessageResponseModel })
   changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.id, dto);
   }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 
-/** Hash de contraseñas con Argon2id (REQUERIMIENTOS.md §5.1). */
+/** Hash de contraseñas con Argon2id (recomendación OWASP). */
 @Injectable()
 export class PasswordService {
   private readonly options: argon2.HashOptions = {
