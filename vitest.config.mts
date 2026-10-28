@@ -22,8 +22,7 @@ export default defineConfig({
         'src/**/index.ts',
         'src/generated/**',
       ],
-      // El umbral del 70 % (REQUERIMIENTOS.md §5.2) se activa en la Fase 6,
-      // cuando existan las pruebas de carta, pedidos y cuentas.
+      // La cobertura se mide, pero todavía no hay un umbral mínimo que bloquee el CI.
     },
   },
 });
