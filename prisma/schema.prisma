@@ -130,6 +130,7 @@ model Restaurant {
   payments            Payment[]
   splits              Split[]
   splitItems          SplitItem[]
+  auditLogs           AuditLog[]
 
   @@map("restaurants")
 }
@@ -158,6 +159,7 @@ model User {
   discountsApplied    Discount[]           @relation("DiscountAppliedBy")
   discountsApproved   Discount[]           @relation("DiscountApprovedBy")
   paymentsReceived    Payment[]            @relation("PaymentReceivedBy")
+  auditLogs           AuditLog[]
 
   @@index([restaurantId, role])
   @@index([restaurantId, isActive])
@@ -528,6 +530,7 @@ model OrderItem {
   splitItems  SplitItem[]
 
   @@index([restaurantId, preparationArea, status, createdAt])
+  @@index([restaurantId, preparationArea, readyAt])
   @@index([restaurantId, orderId])
   @@map("order_items")
 }
@@ -605,6 +608,7 @@ model Account {
   splits     Split[]
 
   @@index([restaurantId, status, createdAt])
+  @@index([restaurantId, status, closedAt])
   @@index([tableId])
   @@map("accounts")
 }
@@ -653,6 +657,7 @@ model Payment {
   receivedBy User       @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
 
   @@index([restaurantId, accountId, createdAt])
+  @@index([restaurantId, createdAt])
   @@index([splitId])
   @@map("payments")
 }
@@ -690,4 +695,32 @@ model SplitItem {
   @@unique([splitId, orderItemId])
   @@index([restaurantId, splitId])
   @@map("split_items")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 5 — Reportes y auditoría
+// ---------------------------------------------------------------------------
+
+/// Registro de acciones sensibles (RF-70/RF-71).
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  action       String   @db.VarChar(80)
+  entityType   String   @map("entity_type") @db.VarChar(60)
+  entityId     String   @map("entity_id") @db.Uuid
+  before       Json?
+  after        Json?
+  metadata     Json?
+  ip           String?  @db.VarChar(64)
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, createdAt(sort: Desc)])
+  @@index([restaurantId, entityType, entityId])
+  @@index([restaurantId, action, createdAt(sort: Desc)])
+  @@map("audit_logs")
 }

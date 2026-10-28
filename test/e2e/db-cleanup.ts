@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client';
  * Solo debe usarse contra una base cuyo nombre contenga "test".
  */
 export async function cleanDatabase(prisma: PrismaClient): Promise<void> {
+  await prisma.auditLog.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.discount.deleteMany();
   await prisma.splitItem.deleteMany();

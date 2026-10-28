@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { requireRestaurantId } from '../../common/utils/tenant';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
+import { AuditService } from '../audit/audit.service';
 import { MenuPricingService, type ClockParts } from '../catalog/pricing/menu-pricing.service';
 import type {
   AddOrderItemsDto,
@@ -130,6 +131,7 @@ export class OrdersService {
     private readonly calculator: OrderItemCalculatorService,
     private readonly statuses: OrderStatusService,
     private readonly accounts: AccountsService,
+    private readonly audit: AuditService,
   ) {}
 
   /** RF-32: abre una mesa creando un pedido vacío asignado a un mesero. */
@@ -373,6 +375,27 @@ export class OrdersService {
       });
 
       await this.accounts.syncForOrder(tx, orderId);
+
+      await this.audit.record(tx, {
+        restaurantId,
+        userId: actor.id,
+        action: 'CANCEL_ITEM',
+        entityType: 'OrderItem',
+        entityId: cancelled.id,
+        before: {
+          estado: item.status,
+          cantidad: cancelled.quantity,
+          producto: cancelled.productNameSnapshot,
+          total: cancelled.lineTotal,
+        },
+        after: {
+          estado: OrderItemStatus.CANCELLED,
+          motivo: cancelled.cancelReason,
+          canceladoEn: cancelled.cancelledAt,
+        },
+        metadata: { pedidoId: orderId, mesaId: cancelled.order.tableId },
+      });
+
       return cancelled;
     });
 

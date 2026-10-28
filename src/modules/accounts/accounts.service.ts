@@ -18,6 +18,7 @@ import {
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { requireRestaurantId } from '../../common/utils/tenant';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   AccountCalculatorService,
   type AccountCalculation,
@@ -171,6 +172,7 @@ export class AccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calculator: AccountCalculatorService,
+    private readonly audit: AuditService,
   ) {}
 
   /** Crea la cuenta que acompaña a un pedido recién abierto (RF-50). */
@@ -367,7 +369,7 @@ export class AccountsService {
           ? actor.id
           : null;
 
-      await tx.discount.create({
+      const discount = await tx.discount.create({
         data: {
           restaurantId,
           accountId: account.id,
@@ -378,6 +380,25 @@ export class AccountsService {
           reason: dto.motivo.trim(),
           appliedById: actor.id,
           ...(approvedById ? { approvedById } : {}),
+        },
+      });
+
+      await this.audit.record(tx, {
+        restaurantId,
+        userId: actor.id,
+        action: 'APPLY_DISCOUNT',
+        entityType: 'Discount',
+        entityId: discount.id,
+        after: {
+          cuentaId: account.id,
+          itemId: discount.orderItemId,
+          alcance: discount.scope,
+          tipo: discount.type,
+          valor: discount.value,
+          motivo: discount.reason,
+          base,
+          descuentoBps: effectiveBps,
+          aprobadoPorId: approvedById,
         },
       });
 
@@ -575,13 +596,33 @@ export class AccountsService {
         throw new BadRequestException('Solo se pueden anular cuentas cerradas');
       }
 
+      const voidedAt = new Date();
       await tx.account.update({
         where: { id: account.id },
         data: {
           status: AccountStatus.VOIDED,
           voidedById: actor.id,
-          voidedAt: new Date(),
+          voidedAt,
           voidReason: reason.trim(),
+        },
+      });
+
+      await this.audit.record(tx, {
+        restaurantId,
+        userId: actor.id,
+        action: 'VOID_ACCOUNT',
+        entityType: 'Account',
+        entityId: account.id,
+        before: {
+          estado: account.status,
+          total: account.total,
+          pagado: account.paidTotal,
+          cerradaEn: account.closedAt,
+        },
+        after: {
+          estado: AccountStatus.VOIDED,
+          motivo: reason.trim(),
+          anuladaEn: voidedAt,
         },
       });
 

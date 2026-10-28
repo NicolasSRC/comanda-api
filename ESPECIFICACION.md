@@ -1,9 +1,9 @@
 # Comanda — Especificación técnica y estado del proyecto
 
 - **Documento base:** [`REQUERIMIENTOS.md`](./REQUERIMIENTOS.md) v1.0
-- **Versión de este documento:** 1.1
+- **Versión de este documento:** 1.2
 - **Fecha:** 2026-10-28
-- **Estado general:** Fases 1, 2, 3 y 4 completadas y verificadas. Fase 5 es la siguiente.
+- **Estado general:** Fases 1, 2, 3, 4 y 5 completadas y verificadas. Fase 6 es la siguiente.
 - **Alcance:** MVP descrito en la sección 1.2 de los requerimientos.
 
 ### Leyenda de estado
@@ -78,7 +78,7 @@ Lo que falta está detallado por fase en la sección 12.
 | **2. Carta**                | Categorías, productos, variantes, modificadores, horarios, precios, combos, carta pública | ✅     | `src/modules/catalog`, `src/modules/modifiers`, `src/modules/menu`, `test/e2e/menu.e2e-spec.ts` |
 | **3. Pedidos**              | Zonas, mesas, pedidos, estados, enrutamiento cocina/barra                                 | ✅     | `src/modules/orders`, `test/e2e/orders.e2e-spec.ts`                                             |
 | **4. Cuentas**              | Cálculo de valores, impuestos, propina, descuentos, división, pagos                       | ✅     | `src/modules/accounts`, `src/modules/taxes`, `test/e2e/accounts.e2e-spec.ts`                    |
-| **5. Reportes y auditoría** | Ventas, productos, caja, registro de acciones sensibles                                   | ⬜     | —                                                                                               |
+| **5. Reportes y auditoría** | Ventas, productos, caja, registro de acciones sensibles                                   | ✅     | `src/modules/reports`, `src/modules/audit`, `test/e2e/reports.e2e-spec.ts`                      |
 | **6. Pulido**               | Cobertura ≥ 70 %, SSE, frontend mínimo, documentación final                               | ⬜     | —                                                                                               |
 
 ### Verificación ejecutada
@@ -88,8 +88,8 @@ Lo que falta está detallado por fase en la sección 12.
 | `npm run typecheck`                   | ✅ 0 errores                                                                  |
 | `npm run lint`                        | ✅ 0 errores                                                                  |
 | `npm run build`                       | ✅ compila a `dist/`                                                          |
-| `npm test`                            | ✅ 62/62                                                                      |
-| `npm run test:e2e`                    | ✅ 42/42                                                                      |
+| `npm test`                            | ✅ 83/83                                                                      |
+| `npm run test:e2e`                    | ✅ 59/59                                                                      |
 | `npm run test:cov`                    | ✅ cobertura global 13,76 %; motor de cuentas 93,90 %; pedidos puros al 100 % |
 | `GET /health`                         | ✅ `{"status":"ok","database":"up"}`                                          |
 | `POST /auth/login` + `GET /auth/me`   | ✅ token válido y perfil correcto                                             |
@@ -97,6 +97,8 @@ Lo que falta está detallado por fase en la sección 12.
 | `GET /docs`                           | ✅ Swagger UI responde 200                                                    |
 | Flujo de pedidos (e2e)                | ✅ mesa → pedido → cocina/barra → listo → servido                             |
 | Flujo de cuentas (e2e)                | ✅ descuento → propina → pagos mixtos → división → cierre → anulación         |
+| Reportes (e2e)                        | ✅ ventas, productos, meseros, caja, tiempos y CSV con fixtures conocidas     |
+| Auditoría (e2e)                       | ✅ acciones sensibles, filtros, paginación, aislamiento y roles               |
 | Impuestos y configuración (e2e)       | ✅ IVA, propina sugerida, umbral de descuento y aislamiento por restaurante   |
 | `docker compose up -d --build`        | ✅ API y PostgreSQL saludables; migraciones y seed ejecutados                 |
 | `GET /mesas` + cola por área (Docker) | ✅ imagen con Fase 3; 5 mesas demo y cola de cocina consultadas               |
@@ -561,6 +563,11 @@ audit_logs
   INDEX (restaurant_id, entity_type, entity_id)
   INDEX (restaurant_id, action, created_at DESC)
 ```
+
+Estado: **implementado** en la migración `20261028003541_reports_audit`, junto
+con los índices de reportes `accounts(restaurant_id, status, closed_at)`,
+`payments(restaurant_id, created_at)` y
+`order_items(restaurant_id, preparation_area, ready_at)`.
 
 #### Diagrama objetivo
 
@@ -1053,17 +1060,63 @@ Estado: **implementado** en `src/modules/accounts` y `src/modules/taxes`, con
 
 | Método | Ruta                            | Rol                | Descripción                       |
 | ------ | ------------------------------- | ------------------ | --------------------------------- |
-| `GET`  | `/reportes/ventas`              | `ADMIN`            | Ventas por día y rango            |
+| `GET`  | `/reportes/ventas`              | `ADMIN`            | Ventas por día, semana o mes      |
+| `GET`  | `/reportes/ventas.csv`          | `ADMIN`            | Exportación CSV del reporte       |
 | `GET`  | `/reportes/productos`           | `ADMIN`            | Más/menos vendidos, por categoría |
 | `GET`  | `/reportes/meseros`             | `ADMIN`            | Ventas por mesero                 |
 | `GET`  | `/reportes/caja`                | `ADMIN`, `CASHIER` | Cierre por turno y método de pago |
 | `GET`  | `/reportes/tiempos-preparacion` | `ADMIN`            | Tiempo promedio por área          |
-| `GET`  | `/reportes/ventas.csv`          | `ADMIN`            | Exportación CSV                   |
-| `GET`  | `/auditoria`                    | `ADMIN`            | Registro con filtros              |
+| `GET`  | `/auditoria`                    | `ADMIN`            | Registro con filtros y paginación |
 
-Filtros comunes: `desde`, `hasta`, `agrupacion`, `metodoPago`, `meseroId`, `categoriaId`, `page`, `limit`.
+Filtros:
 
-Acciones auditadas mínimas (RF-70): cancelaciones, descuentos, cambios de precio y anulaciones, con usuario, fecha, valor anterior y valor nuevo.
+- Comunes a reportes: `desde` y `hasta` (`YYYY-MM-DD` o ISO 8601). Una fecha sin
+  hora representa el día completo en la zona horaria del restaurante; sin límites
+  se usan los últimos 30 días.
+- `/reportes/ventas`: `agrupacion=DIA|SEMANA|MES` (por defecto `DIA`).
+- `/reportes/productos`: `categoriaId`, `limite` (1–50) y `orden=DESC|ASC`.
+- `/reportes/caja`: `metodoPago=CASH|CARD|TRANSFER`.
+- `/reportes/tiempos-preparacion`: `area=KITCHEN|BAR`.
+- `/auditoria`: `desde`, `hasta`, `accion`, `entidad`, `entidadId`, `usuarioId`,
+  `page` y `limit`.
+
+Reglas de cálculo:
+
+- Solo cuentan cuentas `CLOSED`; las `VOIDED` se excluyen de ventas, productos,
+  meseros y caja.
+- Ventas agrupadas por `closedAt` con subtotal, descuentos, impuestos, propina,
+  total y ticket promedio (total / pedidos, redondeado).
+- Productos con la cantidad y el `lineTotal` bruto de ítems no cancelados; la
+  categoría se toma del producto actual. Se devuelven `productos`, `masVendidos`,
+  `menosVendidos` y `porCategoria`.
+- Meseros agrupados por el usuario del pedido, con pedidos, comensales, total y
+  ticket promedio.
+- Caja agrupada por fecha de pago y método, excluyendo pagos de cuentas anuladas.
+- Preparación como `readyAt - startedAt` de ítems no cancelados con ambos tiempos,
+  agrupada por área.
+- CSV con BOM UTF-8, encabezado, una fila por periodo y una fila `TOTAL`.
+
+Acciones auditadas (RF-70), registradas en la misma transacción del cambio:
+
+| Acción                  | Entidad     | Origen                       |
+| ----------------------- | ----------- | ---------------------------- |
+| `CANCEL_ITEM`           | `OrderItem` | Cancelación con motivo       |
+| `APPLY_DISCOUNT`        | `Discount`  | Descuento por ítem o cuenta  |
+| `VOID_ACCOUNT`          | `Account`   | Anulación de cuenta cerrada  |
+| `UPDATE_PRODUCT_PRICE`  | `Product`   | Cambio de precio base        |
+| `UPDATE_VARIANT_PRICE`  | `Variant`   | Cambio de precio de variante |
+| `CREATE_PRICE_RULE`     | `PriceRule` | Alta de regla de precio      |
+| `UPDATE_PRICE_RULE`     | `PriceRule` | Cambio de precio de la regla |
+| `DEACTIVATE_PRICE_RULE` | `PriceRule` | Baja lógica de la regla      |
+| `UPDATE_COMBO_PRICE`    | `Combo`     | Cambio de precio de combo    |
+
+Cada registro guarda `restaurantId`, `userId` (opcional), `action`, `entityType`,
+`entityId`, `before`, `after`, `metadata`, `ip`/`userAgent` opcionales y
+`createdAt`. La consulta se ordena del más reciente al más antiguo.
+
+Estado: **implementado** en `src/modules/reports`, `src/modules/audit` y
+`src/common/utils/date-range.ts`, con `reports-calculator.service.spec.ts`,
+`date-range.spec.ts` y `test/e2e/reports.e2e-spec.ts`.
 
 ---
 
@@ -1118,6 +1171,9 @@ Acciones auditadas mínimas (RF-70): cancelaciones, descuentos, cambios de preci
 - **Pagos:** no superan el saldo de la cuenta ni el saldo de la división indicada. Se admiten métodos `CASH`, `CARD` y `TRANSFER`, parciales y mixtos.
 - **Divisiones:** por comensal reparte el total en partes iguales; por ítems exige asignar todos los ítems no cancelados y prorratea el total. Ambas garantizan que la suma sea exacta. Una nueva división reemplaza la anterior.
 - **Cierre y anulación:** cerrar exige `pagado >= total`, cierra el pedido y libera la mesa. Solo se anulan cuentas `CLOSED`; se guardan autor, fecha y motivo. Un pedido con pagos o descuentos no se puede unir.
+- **Rangos de reportes:** `desde`/`hasta` sin hora representan días completos en la zona del restaurante; las fechas ISO completas se usan tal cual. Sin límites se toman los últimos 30 días y un rango invertido responde `400`.
+- **Base de los reportes:** ventas, productos, meseros y caja solo consideran cuentas `CLOSED`; las `VOIDED` se excluyen. Los productos usan el `lineTotal` bruto de ítems no cancelados y la preparación usa `readyAt - startedAt` de ítems con ambos tiempos.
+- **Auditoría:** cada acción sensible se registra en la misma transacción que el cambio, con `before`/`after` y usuario. La consulta filtra por fecha, acción, entidad, entidadId y usuario, con paginación y orden descendente por fecha.
 
 ### 7.3 Fórmulas implementadas en la Fase 4
 
@@ -1208,31 +1264,35 @@ Decisiones aplicadas:
 | RF-55 | Pagos efectivo/tarjeta/transferencia, parciales y mixtos    | Alta      | 4            | ✅     |
 | RF-56 | Cierre solo con total pagado                                | Alta      | 4            | ✅     |
 | RF-57 | Anulación de cuenta cerrada con auditoría                   | Media     | 4            | ✅     |
-| RF-60 | Ventas por día y rango                                      | Alta      | 5            | ⬜     |
-| RF-61 | Ventas por categoría, producto y mesero                     | Media     | 5            | ⬜     |
-| RF-62 | Productos más y menos vendidos                              | Media     | 5            | ⬜     |
-| RF-63 | Ticket promedio y ocupación de mesas                        | Media     | 5            | ⬜     |
-| RF-64 | Tiempo promedio de preparación por área                     | Baja      | 5            | ⬜     |
-| RF-65 | Cierre de caja por turno                                    | Media     | 5            | ⬜     |
-| RF-66 | Exportación CSV                                             | Baja      | 5            | ⬜     |
-| RF-70 | Auditoría de acciones sensibles                             | Alta      | 5            | ⬜     |
-| RF-71 | Consulta de auditoría con filtros                           | Media     | 5            | ⬜     |
+| RF-60 | Ventas por día y rango                                      | Alta      | 5            | ✅     |
+| RF-61 | Ventas por categoría, producto y mesero                     | Media     | 5            | ✅     |
+| RF-62 | Productos más y menos vendidos                              | Media     | 5            | ✅     |
+| RF-63 | Ticket promedio y ocupación de mesas                        | Media     | 5            | 🟡     |
+| RF-64 | Tiempo promedio de preparación por área                     | Baja      | 5            | ✅     |
+| RF-65 | Cierre de caja por turno                                    | Media     | 5            | ✅     |
+| RF-66 | Exportación CSV                                             | Baja      | 5            | ✅     |
+| RF-70 | Auditoría de acciones sensibles                             | Alta      | 5            | ✅     |
+| RF-71 | Consulta de auditoría con filtros                           | Media     | 5            | ✅     |
 
-**Avance funcional:** 39 de 49 requerimientos (80 %): 7 de la Fase 1, los 11
+**Avance funcional:** 47 de 49 requerimientos (96 %): 7 de la Fase 1, los 11
 de la Fase 2 (RF-10 a RF-20), los 13 de la Fase 3 (RF-30 a RF-33 y RF-40 a
-RF-47, más RF-49) y los 8 de la Fase 4 (RF-50 a RF-57).
+RF-47, más RF-49), los 8 de la Fase 4 (RF-50 a RF-57) y 8 de la Fase 5
+(RF-60 a RF-62, RF-64 a RF-66, RF-70 y RF-71). RF-63 queda parcial: el ticket
+promedio está implementado en ventas y meseros, pero la ocupación de mesas no
+forma parte del contrato de reportes de esta fase. RF-48 (SSE) corresponde a la
+Fase 6.
 
 ### 8.2 Criterios de terminado del MVP (§9)
 
-| Criterio                                          | Estado | Nota                                                               |
-| ------------------------------------------------- | ------ | ------------------------------------------------------------------ |
-| Todo se levanta con `docker compose up`           | ✅     | Ejecutado con Docker Desktop 29.9.2: API y PostgreSQL saludables   |
-| Flujo completo de punta a punta                   | 🟡     | Auth, carta, pedidos y cuentas listos; faltan reportes y auditoría |
-| Pruebas de cálculos de cuenta                     | ✅     | `account-calculator.service.spec.ts` y `accounts.e2e-spec.ts`      |
-| Prueba de aislamiento entre restaurantes          | ✅     | `auth`, `menu`, `orders` y `accounts` e2e                          |
-| OpenAPI publicada y consultable                   | 🟡     | `/docs` activo; faltan esquemas de respuesta completos             |
-| README con instalación, arquitectura y decisiones | ✅     | `README.md`                                                        |
-| Datos de ejemplo                                  | ✅     | `prisma/seed.ts` con carta, 2 zonas, 5 mesas, IVA y configuración  |
+| Criterio                                          | Estado | Nota                                                              |
+| ------------------------------------------------- | ------ | ----------------------------------------------------------------- |
+| Todo se levanta con `docker compose up`           | ✅     | Ejecutado con Docker Desktop 29.9.2: API y PostgreSQL saludables  |
+| Flujo completo de punta a punta                   | ✅     | Auth, carta, pedidos, cuentas, reportes y auditoría verificados   |
+| Pruebas de cálculos de cuenta                     | ✅     | `account-calculator.service.spec.ts` y `accounts.e2e-spec.ts`     |
+| Prueba de aislamiento entre restaurantes          | ✅     | `auth`, `menu`, `orders`, `accounts` y `reports` e2e              |
+| OpenAPI publicada y consultable                   | 🟡     | `/docs` activo; faltan esquemas de respuesta completos            |
+| README con instalación, arquitectura y decisiones | ✅     | `README.md`                                                       |
+| Datos de ejemplo                                  | ✅     | `prisma/seed.ts` con carta, 2 zonas, 5 mesas, IVA y configuración |
 
 ---
 
@@ -1316,17 +1376,21 @@ RF-47, más RF-49) y los 8 de la Fase 4 (RF-50 a RF-57).
 | `src/modules/orders/order-status.service.spec.ts`          | Unitaria | Transiciones válidas e inválidas y permisos por rol                                                                 |
 | `src/modules/orders/order-item-calculator.service.spec.ts` | Unitaria | Snapshot de nombres y precios, variantes, extras por línea, agotado y reglas de modificadores                       |
 | `src/modules/accounts/account-calculator.service.spec.ts`  | Unitaria | Descuentos, impuestos incluidos/excluidos, propina, redondeo, casos límite y reparto exacto                         |
+| `src/common/utils/date-range.spec.ts`                      | Unitaria | Rangos por zona horaria, días completos, ISO, DST, día/semana/mes                                                   |
+| `src/modules/reports/reports-calculator.service.spec.ts`   | Unitaria | Agregaciones de ventas, productos, meseros, caja, tiempos, CSV y casos vacíos                                       |
 | `test/e2e/auth.e2e-spec.ts`                                | e2e      | Health, login, refresh, reutilización, logout, reset, creación de tenants, aislamiento, roles y soft delete         |
 | `test/e2e/menu.e2e-spec.ts`                                | e2e      | CRUD de carta, variantes, modificadores, combos, reglas de precio, versiones, carta pública, snapshot y aislamiento |
 | `test/e2e/orders.e2e-spec.ts`                              | e2e      | Zonas, mesas, apertura, pedido con snapshot, cola por área, estados, cancelación, mover, unir y aislamiento         |
 | `test/e2e/accounts.e2e-spec.ts`                            | e2e      | Impuestos, configuración, descuentos, propina, pagos mixtos, divisiones, cierre, anulación y aislamiento            |
+| `test/e2e/reports.e2e-spec.ts`                             | e2e      | Ventas, productos, meseros, caja, tiempos, CSV, auditoría, filtros, roles y aislamiento                             |
 
 Resultado actual:
 
-- **62 pruebas unitarias** en 7 archivos.
-- **42 pruebas e2e** en 4 archivos.
-- **Cobertura unitaria:** 13,76 % de sentencias global; `AccountCalculatorService`
-  93,90 %, `MenuPricingService` 87,23 %, `OrderStatusService` y
+- **83 pruebas unitarias** en 9 archivos.
+- **59 pruebas e2e** en 5 archivos.
+- **Cobertura unitaria:** 20,47 % de sentencias global; `ReportsCalculatorService`
+  98,09 %, `AccountCalculatorService` 93,90 %, `MenuPricingService` 87,23 %,
+  utilidades de fecha 93,61 %, `OrderStatusService` y
   `OrderItemCalculatorService` 100 %. Los e2e validan comportamiento pero no se
   incluyen en la métrica.
 
@@ -1337,16 +1401,15 @@ Resultado actual:
 | 2    | ✅ Precio efectivo, disponibilidad por día/hora, reglas de modificadores                     | ✅ CRUD, aislamiento, carta pública, producto agotado, snapshot               |
 | 3    | ✅ Transiciones de estado, snapshot de precios, enrutamiento                                 | ✅ Flujo completo mesa → pedido → cocina → servido, cancelación, mover y unir |
 | 4    | ✅ Motor de cálculo: descuentos, impuestos incluidos/excluidos, propina, redondeo y división | ✅ Descuento + pagos mixtos + división + cierre + anulación y aislamiento     |
-| 5    | Agregaciones y filtros de reportes                                                           | Reportes contra fixtures, auditoría, CSV                                      |
+| 5    | ✅ Agregaciones y fechas de reportes                                                         | ✅ Reportes contra fixtures, auditoría, CSV, roles y aislamiento              |
 | 6    | —                                                                                            | Carga, SSE, contrato OpenAPI                                                  |
 
 ### 10.3 Regla de cobertura
 
-El umbral del 70 % se activará en la Fase 6, cuando existan las pruebas de
-reportes y el resto de la lógica de negocio. Activarlo hoy haría fallar el CI con
-el 13,76 % actual. La prioridad es que el motor de cuentas tenga cobertura
-cercana al 100 % de sus ramas; los servicios puros de carta y pedidos ya están
-entre 87 % y 100 %.
+El umbral del 70 % se activará en la Fase 6. La cobertura global actual es
+20,47 %, pero los motores puros ya están entre 87 % y 100 % y los e2e cubren los
+flujos completos. Activarlo hoy haría fallar el CI por los servicios de
+infraestructura y controladores, que se miden pero no se prueban unitariamente.
 
 ### 10.4 CI
 
@@ -1360,7 +1423,9 @@ entre 87 % y 100 %.
 6. `npm run test:e2e`
 7. `npm run build`
 
-Pendiente: inicializar el repositorio Git y subirlo a GitHub para que el workflow se ejecute realmente. También conviene añadir un job que valide `docker compose config` y el build de la imagen.
+Pendiente: añadir un job que valide `docker compose config` y el build de la
+imagen. El repositorio ya está publicado en GitHub y el workflow se ejecuta en
+cada push a `main`.
 
 ---
 
@@ -1478,14 +1543,14 @@ npm.cmd run test:e2e
 
 ### Fase 5 — Reportes y auditoría (complejidad L)
 
-1. Tabla de auditoría y registro en acciones sensibles.
-2. Consulta de auditoría con filtros.
-3. Consultas agregadas de ventas, productos, meseros y tiempos.
-4. Cierre de caja por turno y método de pago.
-5. Exportación CSV.
-6. Pruebas con fixtures de ventas conocidas.
+1. ✅ Tabla de auditoría y registro en acciones sensibles.
+2. ✅ Consulta de auditoría con filtros.
+3. ✅ Consultas agregadas de ventas, productos, meseros y tiempos.
+4. ✅ Cierre de caja por turno y método de pago.
+5. ✅ Exportación CSV.
+6. ✅ Pruebas con fixtures de ventas conocidas.
 
-**Terminado cuando:** los reportes cuadran con las cuentas cerradas y toda acción sensible queda auditada.
+**Terminado cuando:** los reportes cuadran con las cuentas cerradas y toda acción sensible queda auditada. → Verificado en `test/e2e/reports.e2e-spec.ts` con fixtures de ventas conocidas, cuentas anuladas excluidas y las nueve acciones auditadas.
 
 ### Fase 6 — Pulido (complejidad M/L)
 
@@ -1588,6 +1653,23 @@ URLs:
 ---
 
 ## 15. Changelog
+
+### 2026-10-28 — Fase 5 completada
+
+- Migración `20261028003541_reports_audit`: tabla `audit_logs` con `JSONB`,
+  relaciones y índices por fecha, entidad y acción; índices de apoyo para reportes
+  en `accounts`, `payments` y `order_items`.
+- Módulo `reports`: ventas por día/semana/mes, productos y categorías, meseros,
+  caja por método de pago, tiempos de preparación y exportación CSV.
+- Módulo `audit`: registro transaccional y consulta con filtros por fecha, acción,
+  entidad, entidadId y usuario, con paginación.
+- `ReportsCalculatorService`: agregaciones puras y CSV con BOM y fila `TOTAL`.
+- `date-range`: resolución de rangos por zona horaria, días completos, ISO y
+  agrupación por día/semana/mes.
+- Auditoría integrada en cancelación de ítems, descuentos, anulación de cuentas,
+  precios de producto/variante, reglas de precio y combos.
+- 21 pruebas unitarias nuevas (83 en total) y 17 e2e nuevas (59 en total).
+- README y este documento actualizados.
 
 ### 2026-10-28 — Fase 4 completada
 

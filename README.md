@@ -4,10 +4,11 @@ API multi-restaurante para gestionar cartas personalizables, pedidos, cuentas y 
 
 > Especificación funcional: [`REQUERIMIENTOS.md`](./REQUERIMIENTOS.md).
 > Especificación técnica y estado por fase: [`ESPECIFICACION.md`](./ESPECIFICACION.md).
-> Estado: **Fase 4 — Cuentas** completada (impuestos, propina, descuentos,
-> división, pagos mixtos, cierre y anulación) sobre las fases 1 (auth, roles y
-> multi-tenant), 2 (carta, precios y disponibilidad) y 3 (zonas, mesas y
-> pedidos).
+> Estado: **Fase 5 — Reportes y auditoría** completada (ventas, productos,
+> meseros, caja, tiempos de preparación, CSV y registro de acciones sensibles)
+> sobre las fases 1 (auth, roles y multi-tenant), 2 (carta, precios y
+> disponibilidad), 3 (zonas, mesas y pedidos) y 4 (cuentas, impuestos, propina,
+> descuentos, pagos y anulación).
 
 ---
 
@@ -36,10 +37,11 @@ Estas decisiones corresponden a la sección 10 de `REQUERIMIENTOS.md`.
 flowchart LR
     Client[Cliente / Swagger] -->|HTTP + JWT| API[NestJS API]
     API --> Guards[Guards: Throttler → JWT → Roles]
-    Guards --> Modules[Módulos: auth · usuarios · restaurantes · catálogo · menú · pedidos · cuentas]
+    Guards --> Modules[Módulos: auth · usuarios · restaurantes · catálogo · menú · pedidos · cuentas · reportes · auditoría]
     Modules --> Pricing[Motor de precio y disponibilidad]
     Modules --> Orders[Motor de pedidos y estados]
     Modules --> Accounts[Motor de cálculo de cuentas]
+    Modules --> Reports[Motor de agregación de reportes]
     Modules --> Prisma[Prisma Client]
     Prisma --> PG[(PostgreSQL 18)]
     API --> Docs[Swagger UI /docs]
@@ -51,15 +53,16 @@ flowchart LR
 ```text
 .
 ├── prisma/
-│   ├── schema.prisma          # Modelo de datos (Fases 1 a 4)
+│   ├── schema.prisma          # Modelo de datos (Fases 1 a 5)
 │   ├── migrations/            # Migraciones versionadas
 │   └── seed.ts                # Demo: usuarios, carta, zonas, mesas, IVA y cuentas
 ├── src/
-│   ├── common/                # Guards, decoradores, paginación, filtros
+│   ├── common/                # Guards, decoradores, paginación, filtros, fechas
 │   ├── config/                # Validación de variables de entorno (Zod)
 │   ├── modules/
 │   │   ├── accounts/          # Cuentas, descuentos, propina, pagos y divisiones
 │   │   │   └── account-calculator.service.ts  # Motor puro de cálculo
+│   │   ├── audit/             # Registro y consulta de acciones sensibles
 │   │   ├── auth/              # Login, refresh rotativo, contraseñas
 │   │   ├── catalog/           # Categorías, productos, variantes, combos
 │   │   │   └── pricing/       # Motor puro de precio y disponibilidad
@@ -67,6 +70,8 @@ flowchart LR
 │   │   ├── menu/              # Versiones, snapshots y carta pública
 │   │   ├── modifiers/         # Grupos y modificadores
 │   │   ├── orders/            # Zonas, mesas, pedidos, estados y colas por área
+│   │   ├── reports/           # Agregaciones de ventas, caja y tiempos + CSV
+│   │   │   └── reports-calculator.service.ts  # Motor puro de reportes
 │   │   ├── restaurants/       # Alta de tenants y configuración de cuentas
 │   │   ├── taxes/             # Impuestos configurables por restaurante
 │   │   └── users/             # CRUD de usuarios del restaurante
@@ -377,6 +382,62 @@ Reglas de cálculo y operación:
 
 ---
 
+## Endpoints de la Fase 5
+
+| Método | Ruta                            | Rol                | Descripción                                         |
+| ------ | ------------------------------- | ------------------ | --------------------------------------------------- |
+| `GET`  | `/reportes/ventas`              | `ADMIN`            | Ventas por día, semana o mes (RF-60)                |
+| `GET`  | `/reportes/ventas.csv`          | `ADMIN`            | Exportación CSV del reporte de ventas (RF-66)       |
+| `GET`  | `/reportes/productos`           | `ADMIN`            | Más/menos vendidos y ventas por categoría (RF-61)   |
+| `GET`  | `/reportes/meseros`             | `ADMIN`            | Ventas agrupadas por mesero (RF-61)                 |
+| `GET`  | `/reportes/caja`                | `ADMIN`, `CASHIER` | Totales por método de pago y día (RF-65)            |
+| `GET`  | `/reportes/tiempos-preparacion` | `ADMIN`            | Tiempo promedio por área (RF-64)                    |
+| `GET`  | `/auditoria`                    | `ADMIN`            | Acciones sensibles con filtros y paginación (RF-71) |
+
+Filtros comunes de reportes:
+
+- `desde` y `hasta` aceptan `YYYY-MM-DD` o ISO 8601 completo. Una fecha sin hora
+  se interpreta como el día completo en la zona horaria del restaurante. Sin
+  límites se usan los últimos 30 días.
+- `/reportes/ventas` acepta `agrupacion=DIA|SEMANA|MES` (por defecto `DIA`).
+- `/reportes/productos` acepta `categoriaId`, `limite` (1–50) y `orden=DESC|ASC`.
+- `/reportes/caja` acepta `metodoPago=CASH|CARD|TRANSFER`.
+- `/reportes/tiempos-preparacion` acepta `area=KITCHEN|BAR`.
+
+Reglas de los reportes:
+
+- Solo se consideran cuentas `CLOSED`; las `VOIDED` se excluyen de ventas,
+  productos, meseros y caja.
+- Los productos usan el total bruto de la línea (`lineTotal`) de ítems no
+  cancelados, por lo que el reporte no descuenta descuentos ni impuestos.
+- La caja agrupa pagos por fecha de pago y método; el ticket promedio es el total
+  dividido entre pedidos, redondeado a la unidad mínima.
+- El tiempo de preparación es `readyAt - startedAt` de ítems no cancelados con
+  ambos tiempos registrados.
+- El CSV incluye BOM UTF-8, encabezado, una fila por periodo y una fila `TOTAL`.
+
+Acciones auditadas (RF-70):
+
+| Acción                  | Entidad     | Origen                          |
+| ----------------------- | ----------- | ------------------------------- |
+| `CANCEL_ITEM`           | `OrderItem` | Cancelación de ítem con motivo  |
+| `APPLY_DISCOUNT`        | `Discount`  | Descuento por ítem o por cuenta |
+| `VOID_ACCOUNT`          | `Account`   | Anulación de una cuenta cerrada |
+| `UPDATE_PRODUCT_PRICE`  | `Product`   | Cambio de `basePrice`           |
+| `UPDATE_VARIANT_PRICE`  | `Variant`   | Cambio de precio de variante    |
+| `CREATE_PRICE_RULE`     | `PriceRule` | Creación de regla de precio     |
+| `UPDATE_PRICE_RULE`     | `PriceRule` | Cambio de precio de una regla   |
+| `DEACTIVATE_PRICE_RULE` | `PriceRule` | Baja lógica de una regla        |
+| `UPDATE_COMBO_PRICE`    | `Combo`     | Cambio de precio de un combo    |
+
+Cada registro guarda `restaurantId`, usuario, fecha, acción, entidad, `entidadId`,
+valores `antes`/`despues` en JSON y `metadata` adicional. `GET /auditoria` acepta
+`desde`, `hasta`, `accion`, `entidad`, `entidadId`, `usuarioId`, `page` y `limit`;
+por defecto devuelve los últimos 30 días ordenados del más reciente al más antiguo.
+El registro se escribe dentro de la misma transacción que la acción auditada.
+
+---
+
 ## Pruebas
 
 ```bash
@@ -398,18 +459,18 @@ npm run test:e2e
 
 Por seguridad, `test/e2e/setup-env.ts` aborta si `DATABASE_URL` no contiene
 `test`. Las pruebas incluyen explícitamente el aislamiento entre restaurantes
-(RF-05), la resolución de precios, la carta pública y el flujo de pedidos.
+(RF-05), la resolución de precios, la carta pública, el flujo de pedidos, los
+reportes con fixtures de ventas conocidas y la auditoría de acciones sensibles.
 
-Estado actual: **62 pruebas unitarias** y **42 pruebas e2e** en verde. La
-cobertura global es 13,76 %; el motor de cuentas
-(`AccountCalculatorService`) alcanza 93,90 % de sentencias, el motor de precios
-87,23 % y los servicios puros de pedidos (`OrderStatusService` y
-`OrderItemCalculatorService`) el 100 %. El umbral del 70 % se activa en la Fase
-6, cuando existan las pruebas de reportes y el resto de la lógica de negocio.
+Estado actual: **83 pruebas unitarias** y **59 pruebas e2e** en verde. La
+cobertura global se recalcula con `npm run test:cov`; los motores puros de
+cuentas, precios, estados, ítems y reportes concentran la mayor cobertura. El
+umbral del 70 % se activa en la Fase 6, cuando se complete el resto de la lógica
+de negocio.
 
 ---
 
-## Modelo de datos (Fases 1 a 4)
+## Modelo de datos (Fases 1 a 5)
 
 ```mermaid
 erDiagram
@@ -438,6 +499,8 @@ erDiagram
     CUENTA ||--o{ PAGO : recibe
     CUENTA ||--o{ DIVISION : divide
     DIVISION ||--o{ DIVISION_ITEM : asigna
+    RESTAURANTE ||--o{ AUDITORIA : registra
+    USUARIO ||--o{ AUDITORIA : ejecuta
 ```
 
 Convenciones aplicadas desde el inicio:
@@ -458,6 +521,8 @@ Convenciones aplicadas desde el inicio:
   `CHECK` en `order_items`.
 - Cuentas, descuentos, pagos y divisiones usan `INTEGER` y `CHECK` de no
   negatividad; los porcentajes se guardan en puntos base y se validan entre 0 y 10000.
+- `audit_logs` guarda `action`/`entity_type` como `VARCHAR`, `before`/`after`/
+  `metadata` como `JSONB`, usuario opcional e índices por fecha, entidad y acción.
 
 ---
 
@@ -471,7 +536,9 @@ Convenciones aplicadas desde el inicio:
       cocina/barra, con snapshot de precios, cancelación, mover y unir.
 - [x] **Fase 4 — Cuentas:** impuestos configurables, propina, descuentos con
       umbral, división por comensales/ítems, pagos mixtos, cierre y anulación.
-- [ ] **Fase 5 — Reportes y auditoría.**
+- [x] **Fase 5 — Reportes y auditoría:** ventas por día/semana/mes, productos y
+      categorías, meseros, caja por método de pago, tiempos de preparación, CSV y
+      registro de cancelaciones, descuentos, cambios de precio y anulaciones.
 - [ ] **Fase 6 — Pulido:** cobertura ≥ 70 %, SSE, frontend mínimo y documentación
       final.
 
@@ -533,3 +600,13 @@ Convenciones aplicadas desde el inicio:
   residuo exacto.
 - **Anulación:** solo aplica a cuentas cerradas, exige `ADMIN` y guarda autor,
   fecha y motivo; el pedido y sus pagos se conservan para auditoría.
+- **Reportes sobre datos persistidos:** las ventas se calculan con cuentas
+  `CLOSED` y los productos con el `lineTotal` congelado del ítem; no se recalcula
+  la carta histórica. Las fechas sin hora se resuelven en la zona del restaurante
+  para que un día contable coincida con el día local.
+- **Agregación pura:** `ReportsCalculatorService` recibe filas ya consultadas y no
+  toca Prisma ni el reloj, lo que permite probar los totales con fixtures
+  deterministas.
+- **Auditoría transaccional:** cada acción sensible escribe su registro dentro de
+  la misma transacción del cambio, con valores `antes`/`despues` y usuario. Así
+  no quedan acciones aplicadas sin rastro ni registros de cambios revertidos.

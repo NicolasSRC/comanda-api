@@ -4,6 +4,7 @@ import { type PaginatedResult, paginated, paginationArgs } from '../../common/dt
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { requireRestaurantId } from '../../common/utils/tenant';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import type { AssociateModifierGroupDto } from '../modifiers/dto/modifier.dto';
 import type {
   CreateProductDto,
@@ -66,7 +67,10 @@ export type VariantRecord = Prisma.VariantGetPayload<{ select: typeof variantSel
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(actor: AuthenticatedUser, dto: CreateProductDto): Promise<ProductDetail> {
     const restaurantId = requireRestaurantId(actor);
@@ -160,19 +164,38 @@ export class ProductsService {
       await this.assertNameAvailable(restaurantId, name, product.id);
     }
 
-    return this.prisma.product.update({
-      where: { id: product.id },
-      data: {
-        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
-        ...(name !== undefined ? { name } : {}),
-        ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
-        ...(dto.basePrice !== undefined ? { basePrice: dto.basePrice } : {}),
-        ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl.trim() } : {}),
-        ...(dto.preparationArea !== undefined ? { preparationArea: dto.preparationArea } : {}),
-        ...(dto.isAvailable !== undefined ? { isAvailable: dto.isAvailable } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-      include: productDetailInclude,
+    const priceChanged = dto.basePrice !== undefined && dto.basePrice !== product.basePrice;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({
+        where: { id: product.id },
+        data: {
+          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+          ...(name !== undefined ? { name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+          ...(dto.basePrice !== undefined ? { basePrice: dto.basePrice } : {}),
+          ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl.trim() } : {}),
+          ...(dto.preparationArea !== undefined ? { preparationArea: dto.preparationArea } : {}),
+          ...(dto.isAvailable !== undefined ? { isAvailable: dto.isAvailable } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        },
+        include: productDetailInclude,
+      });
+
+      if (priceChanged) {
+        await this.audit.record(tx, {
+          restaurantId,
+          userId: actor.id,
+          action: 'UPDATE_PRODUCT_PRICE',
+          entityType: 'Product',
+          entityId: product.id,
+          before: { precioBase: product.basePrice },
+          after: { precioBase: updated.basePrice },
+          metadata: { producto: updated.name },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -268,15 +291,34 @@ export class ProductsService {
       }
     }
 
-    return this.prisma.variant.update({
-      where: { id: variant.id },
-      data: {
-        ...(name !== undefined ? { name } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-      select: variantSelect,
+    const priceChanged = dto.price !== undefined && dto.price !== variant.price;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.variant.update({
+        where: { id: variant.id },
+        data: {
+          ...(name !== undefined ? { name } : {}),
+          ...(dto.price !== undefined ? { price: dto.price } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        },
+        select: variantSelect,
+      });
+
+      if (priceChanged) {
+        await this.audit.record(tx, {
+          restaurantId: product.restaurantId,
+          userId: actor.id,
+          action: 'UPDATE_VARIANT_PRICE',
+          entityType: 'Variant',
+          entityId: variant.id,
+          before: { precio: variant.price },
+          after: { precio: updated.price },
+          metadata: { productoId: product.id, variante: updated.name },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -368,7 +410,7 @@ export class ProductsService {
   private async getVariant(productId: string, restaurantId: string, variantId: string) {
     const variant = await this.prisma.variant.findFirst({
       where: { id: variantId, productId, restaurantId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, price: true },
     });
 
     if (!variant) {

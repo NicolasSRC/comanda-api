@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-user.interface';
 import { requireRestaurantId } from '../../../common/utils/tenant';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AuditService } from '../../audit/audit.service';
 import { MenuPricingService } from './menu-pricing.service';
 import type {
   CreateAvailabilityWindowDto,
@@ -54,6 +55,7 @@ export class PriceRulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricing: MenuPricingService,
+    private readonly audit: AuditService,
   ) {}
 
   async listRules(actor: AuthenticatedUser, productId: string): Promise<PriceRuleRecord[]> {
@@ -85,20 +87,42 @@ export class PriceRulesService {
     const name = dto.name.trim();
     await this.assertNameAvailable(product.id, name);
 
-    return this.prisma.priceRule.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const rule = await tx.priceRule.create({
+        data: {
+          restaurantId: product.restaurantId,
+          productId: product.id,
+          variantId: dto.variantId ?? null,
+          name,
+          price: dto.price,
+          ...(dto.daysOfWeek !== undefined ? { daysOfWeek: dto.daysOfWeek } : {}),
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        },
+        select: priceRuleSelect,
+      });
+
+      await this.audit.record(tx, {
         restaurantId: product.restaurantId,
-        productId: product.id,
-        variantId: dto.variantId ?? null,
-        name,
-        price: dto.price,
-        ...(dto.daysOfWeek !== undefined ? { daysOfWeek: dto.daysOfWeek } : {}),
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-      select: priceRuleSelect,
+        userId: actor.id,
+        action: 'CREATE_PRICE_RULE',
+        entityType: 'PriceRule',
+        entityId: rule.id,
+        after: {
+          productoId: product.id,
+          varianteId: rule.variantId,
+          nombre: rule.name,
+          precio: rule.price,
+          diasSemana: rule.daysOfWeek,
+          horaInicio: rule.startTime,
+          horaFin: rule.endTime,
+          prioridad: rule.priority,
+        },
+      });
+
+      return rule;
     });
   }
 
@@ -128,19 +152,38 @@ export class PriceRulesService {
       await this.assertNameAvailable(product.id, name, rule.id);
     }
 
-    return this.prisma.priceRule.update({
-      where: { id: rule.id },
-      data: {
-        ...(dto.variantId !== undefined ? { variantId: dto.variantId } : {}),
-        ...(name !== undefined ? { name } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.daysOfWeek !== undefined ? { daysOfWeek: dto.daysOfWeek } : {}),
-        ...(dto.startTime !== undefined ? { startTime: dto.startTime } : {}),
-        ...(dto.endTime !== undefined ? { endTime: dto.endTime } : {}),
-        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-      select: priceRuleSelect,
+    const priceChanged = dto.price !== undefined && dto.price !== rule.price;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.priceRule.update({
+        where: { id: rule.id },
+        data: {
+          ...(dto.variantId !== undefined ? { variantId: dto.variantId } : {}),
+          ...(name !== undefined ? { name } : {}),
+          ...(dto.price !== undefined ? { price: dto.price } : {}),
+          ...(dto.daysOfWeek !== undefined ? { daysOfWeek: dto.daysOfWeek } : {}),
+          ...(dto.startTime !== undefined ? { startTime: dto.startTime } : {}),
+          ...(dto.endTime !== undefined ? { endTime: dto.endTime } : {}),
+          ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        },
+        select: priceRuleSelect,
+      });
+
+      if (priceChanged) {
+        await this.audit.record(tx, {
+          restaurantId: product.restaurantId,
+          userId: actor.id,
+          action: 'UPDATE_PRICE_RULE',
+          entityType: 'PriceRule',
+          entityId: rule.id,
+          before: { precio: rule.price },
+          after: { precio: updated.price },
+          metadata: { productoId: product.id, nombre: updated.name },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -153,10 +196,25 @@ export class PriceRulesService {
     const product = await this.getProduct(actor, productId);
     const rule = await this.getRule(product.id, product.restaurantId, ruleId);
 
-    return this.prisma.priceRule.update({
-      where: { id: rule.id },
-      data: { isActive: false },
-      select: priceRuleSelect,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.priceRule.update({
+        where: { id: rule.id },
+        data: { isActive: false },
+        select: priceRuleSelect,
+      });
+
+      await this.audit.record(tx, {
+        restaurantId: product.restaurantId,
+        userId: actor.id,
+        action: 'DEACTIVATE_PRICE_RULE',
+        entityType: 'PriceRule',
+        entityId: rule.id,
+        before: { activa: rule.isActive, precio: rule.price },
+        after: { activa: false },
+        metadata: { productoId: product.id, nombre: rule.name },
+      });
+
+      return updated;
     });
   }
 
@@ -252,7 +310,7 @@ export class PriceRulesService {
   private async getRule(productId: string, restaurantId: string, ruleId: string) {
     const rule = await this.prisma.priceRule.findFirst({
       where: { id: ruleId, productId, restaurantId },
-      select: { id: true, name: true, startTime: true, endTime: true },
+      select: { id: true, name: true, price: true, isActive: true, startTime: true, endTime: true },
     });
 
     if (!rule) {

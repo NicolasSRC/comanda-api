@@ -9,6 +9,7 @@ import { type PaginatedResult, paginated, paginationArgs } from '../../common/dt
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { requireRestaurantId } from '../../common/utils/tenant';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import type { ComboItemDto, CreateComboDto, QueryCombosDto, UpdateComboDto } from './dto/combo.dto';
 
 const comboInclude = {
@@ -32,7 +33,10 @@ interface PreparedItem {
 
 @Injectable()
 export class CombosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(actor: AuthenticatedUser, dto: CreateComboDto): Promise<ComboRecord> {
     const restaurantId = requireRestaurantId(actor);
@@ -102,6 +106,7 @@ export class CombosService {
     }
 
     const items = dto.items ? await this.prepareItems(restaurantId, dto.items) : null;
+    const priceChanged = dto.price !== undefined && dto.price !== combo.price;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.combo.update({
@@ -119,6 +124,19 @@ export class CombosService {
         await tx.comboItem.deleteMany({ where: { comboId: combo.id } });
         await tx.comboItem.createMany({
           data: items.map((item) => ({ ...item, comboId: combo.id })),
+        });
+      }
+
+      if (priceChanged) {
+        await this.audit.record(tx, {
+          restaurantId,
+          userId: actor.id,
+          action: 'UPDATE_COMBO_PRICE',
+          entityType: 'Combo',
+          entityId: combo.id,
+          before: { precio: combo.price },
+          after: { precio: dto.price },
+          metadata: { combo: name ?? combo.name },
         });
       }
     });
