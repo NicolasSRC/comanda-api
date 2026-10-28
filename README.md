@@ -111,7 +111,7 @@ flowchart LR
     Modules --> Prisma[Prisma Client]
     Prisma --> PG[(PostgreSQL 18)]
     API --> Docs[Swagger UI /docs]
-    API --> Health[/health]
+    API --> Health["GET /health"]
 ```
 
 ### Estructura del proyecto
