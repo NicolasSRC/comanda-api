@@ -15,6 +15,77 @@ API multi-restaurante para gestionar cartas personalizables, pedidos, cuentas y 
 
 ---
 
+## Cómo ver el proyecto
+
+El proyecto completo son dos repositorios: esta API y el frontend
+[`comanda-web`](https://github.com/NicolasSRC/comanda-web). La API no incluye
+interfaz web; para usar la aplicación hay que levantar ambos.
+
+Requisitos: Docker Desktop con Docker Compose (vía recomendada) y Node.js 22+ con
+npm 10+ para el frontend.
+
+### 1. Levantar la API
+
+```bash
+git clone https://github.com/NicolasSRC/comanda-api.git
+cd comanda-api
+cp .env.example .env
+docker compose up -d --build
+```
+
+Verifica que responde:
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok","database":"up",...}
+```
+
+| Recurso | URL |
+| ------- | --- |
+| API | <http://localhost:3000> |
+| Swagger UI | <http://localhost:3000/docs> |
+| OpenAPI JSON | <http://localhost:3000/docs/json> |
+| Health | <http://localhost:3000/health> |
+| Carta demo | <http://localhost:3000/publico/demo/carta> |
+
+El contenedor aplica migraciones y, con `RUN_SEED=true` (por defecto), carga el
+restaurante `demo` y los usuarios de prueba.
+
+### 2. Levantar el frontend
+
+En otra terminal:
+
+```bash
+git clone https://github.com/NicolasSRC/comanda-web.git
+cd comanda-web
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Abre <http://localhost:5173>. Vite redirige `/api/*` a `http://localhost:3000`,
+así que no hace falta configurar CORS en desarrollo.
+
+### 3. Recorrer la aplicación
+
+| Qué ver | URL | Credenciales |
+| ------- | --- | ------------ |
+| Carta pública | <http://localhost:5173/> | Sin sesión |
+| Login | <http://localhost:5173/login> | Ver credenciales del seed |
+| Mesas y pedidos | <http://localhost:5173/app/mesas> | `admin@demo.com` / `Admin123!` o `mesero@demo.com` / `Mesero123!` |
+| Cocina y barra | <http://localhost:5173/app/cocina> | `cocina@demo.com` / `Cocina123!` |
+| Caja | <http://localhost:5173/app/caja> | `cajero@demo.com` / `Cajero123!` |
+| Reportes | <http://localhost:5173/app/reportes> | `admin@demo.com` / `Admin123!` |
+
+Flujo sugerido: abre una mesa y agrega productos como mesero, avanza los ítems
+como cocina en otra pestaña, comprueba la actualización en vivo, cobra y cierra
+la cuenta como cajero y revisa los reportes como administrador.
+
+La guía detallada del frontend está en el
+[README de comanda-web](https://github.com/NicolasSRC/comanda-web#cómo-ver-el-proyecto).
+
+---
+
 ## Stack y decisiones
 
 | Tema                | Decisión                                                  | Motivo                                                                            |
