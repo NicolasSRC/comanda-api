@@ -19,6 +19,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { requireRestaurantId } from '../../common/utils/tenant';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EventsService } from '../events/events.service';
 import {
   AccountCalculatorService,
   type AccountCalculation,
@@ -173,6 +174,7 @@ export class AccountsService {
     private readonly prisma: PrismaService,
     private readonly calculator: AccountCalculatorService,
     private readonly audit: AuditService,
+    private readonly events: EventsService,
   ) {}
 
   /** Crea la cuenta que acompaña a un pedido recién abierto (RF-50). */
@@ -549,7 +551,7 @@ export class AccountsService {
   async close(actor: AuthenticatedUser, accountId: string): Promise<AccountDetail> {
     const restaurantId = requireRestaurantId(actor);
 
-    return this.prisma.$transaction(async (tx) => {
+    const detail = await this.prisma.$transaction(async (tx) => {
       const account = await this.loadAccount(tx, restaurantId, accountId);
       this.assertOpen(account);
 
@@ -580,6 +582,9 @@ export class AccountsService {
 
       return this.refreshDetail(tx, restaurantId, account.id);
     });
+
+    this.publishOrderEvent(restaurantId, detail, OrderStatus.CLOSED);
+    return detail;
   }
 
   /** RF-57: anula una cuenta cerrada con motivo y auditoría básica. */
@@ -590,7 +595,7 @@ export class AccountsService {
   ): Promise<AccountDetail> {
     const restaurantId = requireRestaurantId(actor);
 
-    return this.prisma.$transaction(async (tx) => {
+    const detail = await this.prisma.$transaction(async (tx) => {
       const account = await this.loadAccount(tx, restaurantId, accountId);
       if (account.status !== AccountStatus.CLOSED) {
         throw new BadRequestException('Solo se pueden anular cuentas cerradas');
@@ -627,6 +632,24 @@ export class AccountsService {
       });
 
       return this.refreshDetail(tx, restaurantId, account.id);
+    });
+
+    this.publishOrderEvent(restaurantId, detail, AccountStatus.VOIDED);
+    return detail;
+  }
+
+  private publishOrderEvent(
+    restaurantId: string,
+    detail: AccountDetail,
+    status: string,
+  ): void {
+    this.events.publish({
+      type: 'order.updated',
+      restaurantId,
+      orderId: detail.pedidoId,
+      tableId: detail.mesaId,
+      itemId: null,
+      status,
     });
   }
 

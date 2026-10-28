@@ -19,6 +19,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
 import { MenuPricingService, type ClockParts } from '../catalog/pricing/menu-pricing.service';
+import { EventsService } from '../events/events.service';
 import type {
   AddOrderItemsDto,
   CancelOrderItemDto,
@@ -132,6 +133,7 @@ export class OrdersService {
     private readonly statuses: OrderStatusService,
     private readonly accounts: AccountsService,
     private readonly audit: AuditService,
+    private readonly events: EventsService,
   ) {}
 
   /** RF-32: abre una mesa creando un pedido vacío asignado a un mesero. */
@@ -181,7 +183,16 @@ export class OrdersService {
       return created;
     });
 
-    return this.findOne(actor, order.id);
+    const detail = await this.findOne(actor, order.id);
+    this.events.publish({
+      type: 'order.opened',
+      restaurantId,
+      orderId: order.id,
+      tableId: table.id,
+      itemId: null,
+      status: OrderStatus.OPEN,
+    });
+    return detail;
   }
 
   /** RF-40/RF-42: crea un pedido con sus ítems y precios congelados. */
@@ -233,7 +244,16 @@ export class OrdersService {
       return created;
     });
 
-    return this.findOne(actor, order.id);
+    const detail = await this.findOne(actor, order.id);
+    this.events.publish({
+      type: 'order.opened',
+      restaurantId,
+      orderId: order.id,
+      tableId: table.id,
+      itemId: null,
+      status: OrderStatus.OPEN,
+    });
+    return detail;
   }
 
   async list(
@@ -306,7 +326,16 @@ export class OrdersService {
       await this.accounts.syncForOrder(tx, order.id);
     });
 
-    return this.findOne(actor, order.id);
+    const detail = await this.findOne(actor, order.id);
+    this.events.publish({
+      type: 'items.created',
+      restaurantId,
+      orderId: order.id,
+      tableId: order.tableId,
+      itemId: null,
+      status: OrderItemStatus.PENDING,
+    });
+    return detail;
   }
 
   /** RF-45: aplica una transición válida y registra los tiempos del ítem. */
@@ -343,7 +372,16 @@ export class OrdersService {
       include: itemDetailInclude,
     });
 
-    return this.serializeItem(updated);
+    const response = this.serializeItem(updated);
+    this.events.publish({
+      type: 'item.updated',
+      restaurantId,
+      orderId,
+      tableId: item.order.tableId,
+      itemId: item.id,
+      status: dto.estado,
+    });
+    return response;
   }
 
   /** RF-44: cancelación con motivo y registro de quién y cuándo. */
@@ -399,7 +437,16 @@ export class OrdersService {
       return cancelled;
     });
 
-    return this.serializeItem(updated);
+    const response = this.serializeItem(updated);
+    this.events.publish({
+      type: 'item.updated',
+      restaurantId,
+      orderId,
+      tableId: updated.order.tableId,
+      itemId: updated.id,
+      status: OrderItemStatus.CANCELLED,
+    });
+    return response;
   }
 
   /** RF-47: cola por área ordenada por antigüedad. */
@@ -468,7 +515,16 @@ export class OrdersService {
       await this.accounts.moveForOrder(tx, order.id, target.id);
     });
 
-    return this.findOne(actor, order.id);
+    const detail = await this.findOne(actor, order.id);
+    this.events.publish({
+      type: 'order.updated',
+      restaurantId,
+      orderId: order.id,
+      tableId: target.id,
+      itemId: null,
+      status: OrderStatus.OPEN,
+    });
+    return detail;
   }
 
   /** RF-33 (prioridad baja): unir los ítems de un pedido en otro pedido abierto. */
@@ -505,7 +561,16 @@ export class OrdersService {
       await this.accounts.syncForOrder(tx, target.id);
     });
 
-    return this.findOne(actor, target.id);
+    const detail = await this.findOne(actor, target.id);
+    this.events.publish({
+      type: 'order.updated',
+      restaurantId,
+      orderId: target.id,
+      tableId: target.tableId,
+      itemId: null,
+      status: OrderStatus.OPEN,
+    });
+    return detail;
   }
 
   private async buildItems(
@@ -710,7 +775,7 @@ export class OrdersService {
         status: true,
         sentAt: true,
         startedAt: true,
-        order: { select: { id: true, status: true } },
+        order: { select: { id: true, tableId: true, status: true } },
       },
     });
 

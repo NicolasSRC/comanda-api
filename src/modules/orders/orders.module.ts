@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
 import { AuditModule } from '../audit/audit.module';
 import { PricingModule } from '../catalog/pricing/pricing.module';
+import { EventsModule } from '../events/events.module';
 import { AreasController } from './areas.controller';
 import { OrderItemCalculatorService } from './order-item-calculator.service';
 import { OrderStatusService } from './order-status.service';
@@ -13,7 +14,7 @@ import { ZonesController } from './zones.controller';
 import { ZonesService } from './zones.service';
 
 @Module({
-  imports: [PricingModule, AccountsModule, AuditModule],
+  imports: [PricingModule, AccountsModule, AuditModule, EventsModule],
   controllers: [ZonesController, TablesController, OrdersController, AreasController],
   providers: [
     ZonesService,

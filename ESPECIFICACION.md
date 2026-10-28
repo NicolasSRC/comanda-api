@@ -1,9 +1,10 @@
 # Comanda — Especificación técnica y estado del proyecto
 
 - **Documento base:** [`REQUERIMIENTOS.md`](./REQUERIMIENTOS.md) v1.0
-- **Versión de este documento:** 1.2
+- **Versión de este documento:** 1.3
 - **Fecha:** 2026-10-28
-- **Estado general:** Fases 1, 2, 3, 4 y 5 completadas y verificadas. Fase 6 es la siguiente.
+- **Estado general:** Fases 1 a 5 completadas y verificadas. Fase 6 parcial: SSE y frontend separado ya implementados; cobertura, logs estructurados y pruebas de carga pendientes.
+- **Repositorios:** API en [`NicolasSRC/comanda-api`](https://github.com/NicolasSRC/comanda-api) y frontend en [`NicolasSRC/comanda-web`](https://github.com/NicolasSRC/comanda-web).
 - **Alcance:** MVP descrito en la sección 1.2 de los requerimientos.
 
 ### Leyenda de estado
@@ -79,7 +80,7 @@ Lo que falta está detallado por fase en la sección 12.
 | **3. Pedidos**              | Zonas, mesas, pedidos, estados, enrutamiento cocina/barra                                 | ✅     | `src/modules/orders`, `test/e2e/orders.e2e-spec.ts`                                             |
 | **4. Cuentas**              | Cálculo de valores, impuestos, propina, descuentos, división, pagos                       | ✅     | `src/modules/accounts`, `src/modules/taxes`, `test/e2e/accounts.e2e-spec.ts`                    |
 | **5. Reportes y auditoría** | Ventas, productos, caja, registro de acciones sensibles                                   | ✅     | `src/modules/reports`, `src/modules/audit`, `test/e2e/reports.e2e-spec.ts`                      |
-| **6. Pulido**               | Cobertura ≥ 70 %, SSE, frontend mínimo, documentación final                               | ⬜     | —                                                                                               |
+| **6. Pulido**               | Cobertura ≥ 70 %, SSE, frontend, documentación final                                      | 🟡     | `src/modules/events`; frontend en `comanda-web`; smoke SSE con latido y 401 sin token           |
 
 ### Verificación ejecutada
 
@@ -90,7 +91,7 @@ Lo que falta está detallado por fase en la sección 12.
 | `npm run build`                       | ✅ compila a `dist/`                                                          |
 | `npm test`                            | ✅ 83/83                                                                      |
 | `npm run test:e2e`                    | ✅ 59/59                                                                      |
-| `npm run test:cov`                    | ✅ cobertura global 13,76 %; motor de cuentas 93,90 %; pedidos puros al 100 % |
+| `npm run test:cov`                    | ✅ cobertura global 20,47 %; motor de cuentas 93,90 %; pedidos puros al 100 % |
 | `GET /health`                         | ✅ `{"status":"ok","database":"up"}`                                          |
 | `POST /auth/login` + `GET /auth/me`   | ✅ token válido y perfil correcto                                             |
 | `GET /publico/demo/carta`             | ✅ 200 con carta publicada, precios y variantes                               |
@@ -99,6 +100,8 @@ Lo que falta está detallado por fase en la sección 12.
 | Flujo de cuentas (e2e)                | ✅ descuento → propina → pagos mixtos → división → cierre → anulación         |
 | Reportes (e2e)                        | ✅ ventas, productos, meseros, caja, tiempos y CSV con fixtures conocidas     |
 | Auditoría (e2e)                       | ✅ acciones sensibles, filtros, paginación, aislamiento y roles               |
+| `GET /mesas` como `CASHIER`           | ✅ 200 con las 5 mesas demo; el rol puede cobrar sin administrar la carta    |
+| SSE `GET /eventos/pedidos`            | ✅ `text/event-stream`, latido `ping` a los 25 s y `401` sin token válido     |
 | Impuestos y configuración (e2e)       | ✅ IVA, propina sugerida, umbral de descuento y aislamiento por restaurante   |
 | `docker compose up -d --build`        | ✅ API y PostgreSQL saludables; migraciones y seed ejecutados                 |
 | `GET /mesas` + cola por área (Docker) | ✅ imagen con Fase 3; 5 mesas demo y cola de cocina consultadas               |
@@ -123,8 +126,8 @@ Lo que falta está detallado por fase en la sección 12.
 | IDs                 | **UUID v4**                                                  | No expone secuencias y facilita integraciones                                      | Enteros autoincrementales                 |
 | Idioma              | Código en inglés; rutas, mensajes, Swagger y docs en español | Coincide con los endpoints de la especificación                                    | Todo en inglés                            |
 | Multi-tenancy       | **Filtro explícito por `restaurantId` en cada consulta**     | Simple, auditable y difícil de eludir por accidente                                | Row-Level Security, middleware global     |
-| Tiempo real         | **SSE** (propuesto, Fase 6)                                  | Una sola dirección y más simple que WebSocket                                      | WebSocket                                 |
-| Frontend            | **Pendiente de decisión** (Fase 6)                           | No bloquea el MVP de la API                                                        | Solo API                                  |
+| Tiempo real         | **SSE** (`GET /eventos/pedidos`)                             | Una sola dirección, reconexión automática y más simple que WebSocket               | WebSocket                                 |
+| Frontend            | **React 19 + Vite + TypeScript** en `comanda-web`             | Repositorio independiente; consume HTTP y SSE; carta pública y panel operativo      | Solo API                                  |
 
 ### Decisiones de diseño relevantes
 
@@ -1254,7 +1257,7 @@ Decisiones aplicadas:
 | RF-45 | Estados de ítem                                             | Alta      | 3            | ✅     |
 | RF-46 | Enrutamiento automático cocina/barra                        | Alta      | 3            | ✅     |
 | RF-47 | Vista por área ordenada por antigüedad                      | Alta      | 3            | ✅     |
-| RF-48 | Notificación en tiempo real al mesero                       | Baja      | 6            | ⬜     |
+| RF-48 | Notificación en tiempo real al mesero                       | Baja      | 6            | ✅     |
 | RF-49 | Registro de tiempos de preparación                          | Media     | 3            | ✅     |
 | RF-50 | Cálculo de subtotal                                         | Alta      | 4            | ✅     |
 | RF-51 | Impuestos configurables por restaurante                     | Alta      | 4            | ✅     |
@@ -1274,13 +1277,12 @@ Decisiones aplicadas:
 | RF-70 | Auditoría de acciones sensibles                             | Alta      | 5            | ✅     |
 | RF-71 | Consulta de auditoría con filtros                           | Media     | 5            | ✅     |
 
-**Avance funcional:** 47 de 49 requerimientos (96 %): 7 de la Fase 1, los 11
+**Avance funcional:** 48 de 49 requerimientos (98 %): 7 de la Fase 1, los 11
 de la Fase 2 (RF-10 a RF-20), los 13 de la Fase 3 (RF-30 a RF-33 y RF-40 a
 RF-47, más RF-49), los 8 de la Fase 4 (RF-50 a RF-57) y 8 de la Fase 5
-(RF-60 a RF-62, RF-64 a RF-66, RF-70 y RF-71). RF-63 queda parcial: el ticket
-promedio está implementado en ventas y meseros, pero la ocupación de mesas no
-forma parte del contrato de reportes de esta fase. RF-48 (SSE) corresponde a la
-Fase 6.
+(RF-60 a RF-62, RF-64 a RF-66, RF-70 y RF-71). RF-48 (SSE) quedó implementado en
+la Fase 6. RF-63 queda parcial: el ticket promedio está implementado en ventas y
+meseros, pero la ocupación de mesas no forma parte del contrato de reportes.
 
 ### 8.2 Criterios de terminado del MVP (§9)
 
@@ -1309,12 +1311,12 @@ Fase 6.
 | Secretos solo en entorno              | ✅     | `.env`, validado al arrancar; `.env` fuera de Git            |
 | Consultas parametrizadas              | ✅     | Prisma                                                       |
 | Cabeceras de seguridad                | ✅     | Helmet + CSP compatible con Swagger                          |
-| Pruebas de aislamiento                | ✅     | 42 pruebas e2e, incluidas carta, catálogo, pedidos y cuentas |
-| Bloqueo de cuenta tras N intentos     | ⬜     | Hoy solo rate limit; evaluar en Fase 6                       |
-| Limpieza de tokens expirados          | ⬜     | Job programado pendiente                                     |
-| HTTPS / proxy inverso                 | ⬜     | Fuera del MVP local; documentar despliegue                   |
-| Auditoría de acciones sensibles       | ⬜     | Fase 5                                                       |
-| 2FA                                   | ⬜     | Fuera de alcance                                             |
+| Pruebas de aislamiento                | ✅     | 59 pruebas e2e, incluidas carta, catálogo, pedidos, cuentas y reportes |
+| Bloqueo de cuenta tras N intentos     | ⬜     | Hoy solo rate limit; evaluar en una fase posterior                   |
+| Limpieza de tokens expirados          | ⬜     | Job programado pendiente                                             |
+| HTTPS / proxy inverso                 | ⬜     | Fuera del MVP local; documentar despliegue                           |
+| Auditoría de acciones sensibles       | ✅     | Fase 5, con consulta filtrada y paginada                             |
+| 2FA                                   | ⬜     | Fuera de alcance                                                     |
 
 ### 9.2 Calidad
 
@@ -1322,9 +1324,9 @@ Fase 6.
 | ------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript estricto                         | ✅     | `strict`, `noUncheckedIndexedAccess`                                                                                                                 |
 | ESLint y Prettier                           | ✅     | Configuración plana de ESLint 9                                                                                                                      |
-| Cobertura ≥ 70 % en lógica de negocio       | ⬜     | Cobertura unitaria actual: **13,76 %**; e2e no instrumentado. `AccountCalculatorService` 93,90 %, `MenuPricingService` 87,23 % y pedidos puros 100 % |
+| Cobertura ≥ 70 % en lógica de negocio       | ⬜     | Cobertura unitaria actual: **20,47 %**; e2e no instrumentado. `AccountCalculatorService` 93,90 %, `MenuPricingService` 87,23 % y pedidos puros 100 % |
 | Cobertura prioritaria en cálculo de cuentas | ✅     | `AccountCalculatorService` 93,90 % de sentencias y 92,85 % de líneas; casos de redondeo, impuestos incluidos y divisiones                            |
-| Commits descriptivos y PRs                  | ⬜     | El directorio aún no es un repositorio Git                                                                                                           |
+| Commits descriptivos y PRs                  | ✅     | Repositorios `comanda-api` y `comanda-web` con historial Git                                                                                          |
 | Pruebas de aislamiento                      | ✅     | Incluidas en e2e                                                                                                                                     |
 
 ### 9.3 Rendimiento
@@ -1354,12 +1356,13 @@ Fase 6.
 | README con instalación, arquitectura y decisiones | ✅     | `README.md`                                                   |
 | Diagrama de arquitectura y modelo de datos        | 🟡     | Mermaid en README y en este documento                         |
 | Documento de estado y especificación detallada    | ✅     | Este archivo                                                  |
+| README del frontend                               | ✅     | `comanda-web/README.md`: stack, rutas, SSE, scripts y pruebas |
 
 ### 9.6 Integración continua
 
 | Requisito                                          | Estado | Detalle                                                                                 |
 | -------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
-| GitHub Actions: instalación, lint, pruebas y build | 🟡     | `.github/workflows/ci.yml` escrito; no ejecutado porque el directorio no es un repo Git |
+| GitHub Actions: instalación, lint, pruebas y build | ✅     | `.github/workflows/ci.yml` en `comanda-api`; se ejecuta en cada push a `main` |
 
 ---
 
@@ -1402,7 +1405,7 @@ Resultado actual:
 | 3    | ✅ Transiciones de estado, snapshot de precios, enrutamiento                                 | ✅ Flujo completo mesa → pedido → cocina → servido, cancelación, mover y unir |
 | 4    | ✅ Motor de cálculo: descuentos, impuestos incluidos/excluidos, propina, redondeo y división | ✅ Descuento + pagos mixtos + división + cierre + anulación y aislamiento     |
 | 5    | ✅ Agregaciones y fechas de reportes                                                         | ✅ Reportes contra fixtures, auditoría, CSV, roles y aislamiento              |
-| 6    | —                                                                                            | Carga, SSE, contrato OpenAPI                                                  |
+| 6    | —                                                                                            | ✅ SSE con latido y autenticación; pendiente carga y contrato OpenAPI         |
 
 ### 10.3 Regla de cobertura
 
@@ -1554,15 +1557,15 @@ npm.cmd run test:e2e
 
 ### Fase 6 — Pulido (complejidad M/L)
 
-1. Elevar cobertura al 70 % y activar umbrales.
-2. Completar esquemas de respuesta en Swagger.
-3. Logs estructurados (por ejemplo, Pino) y correlación de peticiones.
-4. SSE para “ítem listo”.
-5. Frontend mínimo opcional (carta pública, cocina, caja).
-6. Pruebas de carga y verificación de < 300 ms.
+1. Elevar cobertura al 70 % y activar umbrales. → ⬜ pendiente (20,47 % global).
+2. Completar esquemas de respuesta en Swagger. → ⬜ pendiente.
+3. Logs estructurados (por ejemplo, Pino) y correlación de peticiones. → ⬜ pendiente.
+4. SSE para “ítem listo”. → ✅ `GET /eventos/pedidos` con eventos de pedido e ítem, latido y filtro por restaurante.
+5. Frontend mínimo opcional (carta pública, cocina, caja). → ✅ frontend completo en [`comanda-web`](https://github.com/NicolasSRC/comanda-web): carta pública, login, mesas, pedidos, cocina/barra, caja y reportes.
+6. Pruebas de carga y verificación de < 300 ms. → ⬜ pendiente.
 7. Validar `docker compose up` en un entorno limpio. → ✅ ya validado en Fase 2.
-8. Inicializar Git, proteger `main`, PRs y ejecutar CI.
-9. Revisión final de README, diagramas y decisiones.
+8. Inicializar Git, proteger `main`, PRs y ejecutar CI. → ✅ repositorios y CI configurados; revisar protección de rama en GitHub.
+9. Revisión final de README, diagramas y decisiones. → 🟡 README y especificación actualizados; quedan diagramas de despliegue del frontend.
 
 ---
 
@@ -1583,10 +1586,9 @@ npm.cmd run test:e2e
 
 ### 13.2 Deuda técnica
 
-- Cobertura unitaria del 13,76 % (e2e no instrumentado); cuentas 93,90 %, carta 87,23 % y servicios puros de pedidos 100 %.
+- Cobertura unitaria del 20,47 % (e2e no instrumentado); cuentas 93,90 %, carta 87,23 % y servicios puros de pedidos 100 %.
 - Swagger sin esquemas de respuesta completos.
 - Logs en texto, sin estructura ni `requestId`.
-- Sin repositorio Git ni ejecución real de CI.
 - Sin pruebas de carga.
 - `package.json#prisma` está deprecado en Prisma 6; migrar a `prisma.config.ts` antes de Prisma 7.
 - La imagen Docker copia dependencias de desarrollo; se puede reducir con una etapa de producción.
@@ -1598,7 +1600,7 @@ npm.cmd run test:e2e
 
 | Tema                    | Opciones                                    | Recomendación                                        |
 | ----------------------- | ------------------------------------------- | ---------------------------------------------------- |
-| Frontend                | Solo API / React mínimo                     | React mínimo en Fase 6 si hay tiempo                 |
+| Frontend                | Solo API / React separado                   | ✅ `comanda-web` con React 19 + Vite               |
 | Base de la propina      | Subtotal / Total con impuestos              | ✅ `TOTAL` por defecto, configurable por restaurante |
 | Impuestos incluidos     | Uno o varios                                | ✅ Uno incluido; varios solo excluidos               |
 | Umbral de descuento     | 10 %, 20 %, configurable                    | ✅ 20 % por defecto, editable por restaurante        |
@@ -1653,6 +1655,23 @@ URLs:
 ---
 
 ## 15. Changelog
+
+### 2026-10-28 — Fase 6 parcial: SSE y frontend separado
+
+- Módulo `events`: `GET /eventos/pedidos?token=` con autenticación por access
+  token en query, filtro por `restaurantId`, eventos `order.opened`,
+  `order.updated`, `items.created` e `item.updated`, y latido cada 25 s.
+- Publicación de eventos al abrir/crear pedidos, agregar ítems, cambiar estado,
+  cancelar, mover/unir pedidos y cerrar/anular cuentas.
+- `GET /mesas` y `GET /mesas/:id` habilitados para `CASHIER`, necesario para el
+  flujo de caja.
+- Frontend extraído a [`NicolasSRC/comanda-web`](https://github.com/NicolasSRC/comanda-web):
+  React 19, Vite, Tailwind, shadcn/ui, TanStack Query, RHF + Zod, Zustand, SSE,
+  Vitest y Playwright.
+- Repositorio renombrado a `comanda-api`; documentación dividida por repositorio.
+- Corregido `nest build` con `tsBuildInfoFile` dentro de `dist/` para que un
+  build limpio no reutilice un caché incremental obsoleto.
+- Smoke test SSE: `text/event-stream`, latido `ping` y `401` sin token.
 
 ### 2026-10-28 — Fase 5 completada
 

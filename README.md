@@ -1,14 +1,17 @@
-# Comanda
+# Comanda API
 
 API multi-restaurante para gestionar cartas personalizables, pedidos, cuentas y reportes en restaurantes y bares.
 
 > Especificación funcional: [`REQUERIMIENTOS.md`](./REQUERIMIENTOS.md).
 > Especificación técnica y estado por fase: [`ESPECIFICACION.md`](./ESPECIFICACION.md).
+> Frontend: [`NicolasSRC/comanda-web`](https://github.com/NicolasSRC/comanda-web).
 > Estado: **Fase 5 — Reportes y auditoría** completada (ventas, productos,
 > meseros, caja, tiempos de preparación, CSV y registro de acciones sensibles)
 > sobre las fases 1 (auth, roles y multi-tenant), 2 (carta, precios y
 > disponibilidad), 3 (zonas, mesas y pedidos) y 4 (cuentas, impuestos, propina,
-> descuentos, pagos y anulación).
+> descuentos, pagos y anulación). La **Fase 6** ya incluye el flujo SSE de
+> pedidos y el frontend separado; quedan pendientes la cobertura ≥ 70 %, los logs
+> estructurados y las pruebas de carga.
 
 ---
 
@@ -25,6 +28,8 @@ API multi-restaurante para gestionar cartas personalizables, pedidos, cuentas y 
 | Validación          | **class-validator + class-transformer**                   | Integración nativa con el `ValidationPipe` de NestJS                              |
 | Pruebas             | **Vitest + Supertest**                                    | Rápido con TypeScript; unitarias y e2e                                            |
 | Contenedores        | **Docker + Docker Compose**                               | `docker compose up` levanta API y PostgreSQL                                      |
+| Tiempo real         | **SSE** (`GET /eventos/pedidos`)                          | Una sola dirección, reconexión automática y más simple que WebSocket              |
+| Frontend            | **React 19 + Vite + TypeScript** en `comanda-web`          | Repositorio independiente; consume la API por HTTP y SSE                          |
 | Código              | Identificadores en inglés, rutas/mensajes/docs en español | Coincide con los endpoints de la especificación                                   |
 
 Estas decisiones corresponden a la sección 10 de `REQUERIMIENTOS.md`.
@@ -438,6 +443,45 @@ El registro se escribe dentro de la misma transacción que la acción auditada.
 
 ---
 
+## Endpoints de la Fase 6
+
+| Método | Ruta                     | Rol           | Descripción                                      |
+| ------ | ------------------------ | ------------- | ------------------------------------------------ |
+| `GET`  | `/eventos/pedidos?token=` | Autenticado   | Flujo SSE de pedidos, ítems y cuentas (RF-48)    |
+
+### Tiempo real por SSE
+
+`GET /eventos/pedidos` mantiene una conexión `text/event-stream`. `EventSource`
+no permite enviar cabeceras, así que el access token viaja en la query
+`?token=<jwt>`; el servidor lo valida igual que `JwtStrategy` (firma, tipo
+`access`, usuario activo y restaurante activo).
+
+Eventos publicados:
+
+| Evento          | Origen                                                        |
+| --------------- | ------------------------------------------------------------- |
+| `order.opened`  | Apertura de mesa o creación de pedido                         |
+| `items.created` | Ítems agregados a un pedido                                   |
+| `item.updated`  | Cambio de estado o cancelación de un ítem                     |
+| `order.updated` | Mover/unir pedidos, cierre o anulación de cuenta              |
+| `ping`          | Latido cada 25 s para conservar la conexión                   |
+
+Cada evento incluye `restaurantId`, `orderId`, `tableId`, `itemId`, `status` y
+`at`. El controlador filtra por el `restaurantId` del token, de modo que un
+cliente nunca recibe eventos de otro restaurante. El frontend invalida sus
+consultas de TanStack Query y mantiene el polling como respaldo.
+
+```bash
+# Ejemplo con un access token válido
+curl -N "http://localhost:3000/eventos/pedidos?token=$ACCESS_TOKEN"
+
+# event: ping
+# id: 1
+# data: {"at":"2026-10-28T20:25:29.216Z"}
+```
+
+---
+
 ## Pruebas
 
 ```bash
@@ -539,8 +583,14 @@ Convenciones aplicadas desde el inicio:
 - [x] **Fase 5 — Reportes y auditoría:** ventas por día/semana/mes, productos y
       categorías, meseros, caja por método de pago, tiempos de preparación, CSV y
       registro de cancelaciones, descuentos, cambios de precio y anulaciones.
-- [ ] **Fase 6 — Pulido:** cobertura ≥ 70 %, SSE, frontend mínimo y documentación
-      final.
+- [ ] **Fase 6 — Pulido:**
+  - [x] SSE de pedidos e ítems (`GET /eventos/pedidos`).
+  - [x] Frontend React separado en
+        [`comanda-web`](https://github.com/NicolasSRC/comanda-web) con carta
+        pública, mesas, pedidos, cocina/barra, caja y reportes.
+  - [ ] Cobertura ≥ 70 % y umbrales activos.
+  - [ ] Logs estructurados y correlación de peticiones.
+  - [ ] Pruebas de carga y revisión final del contrato OpenAPI.
 
 ---
 

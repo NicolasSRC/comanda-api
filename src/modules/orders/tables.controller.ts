@@ -18,14 +18,14 @@ export class TablesController {
   ) {}
 
   @Get()
-  @Roles(Role.ADMIN, Role.WAITER)
+  @Roles(Role.ADMIN, Role.WAITER, Role.CASHIER)
   @ApiOperation({ summary: 'Listar mesas con su zona y pedido abierto' })
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryTablesDto) {
     return this.tables.list(actor, query);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.WAITER)
+  @Roles(Role.ADMIN, Role.WAITER, Role.CASHIER)
   @ApiOperation({ summary: 'Obtener una mesa' })
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.tables.findOne(actor, id);
