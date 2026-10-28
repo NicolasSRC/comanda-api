@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: comanda-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-comanda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-comanda}
+      POSTGRES_DB: ${POSTGRES_DB:-comanda}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - comanda-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-comanda} -d ${POSTGRES_DB:-comanda}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: comanda-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-comanda}:${POSTGRES_PASSWORD:-comanda}@postgres:5432/${POSTGRES_DB:-comanda}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET es obligatorio}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-30}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      THROTTLE_TTL_SECONDS: ${THROTTLE_TTL_SECONDS:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
+      RUN_SEED: ${RUN_SEED:-true}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@demo.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin123!}
+      SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-superadmin@comanda.app}
+      SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-Superadmin123!}
+    ports:
+      - '${PORT:-3000}:3000'
+
+volumes:
+  comanda-pgdata:

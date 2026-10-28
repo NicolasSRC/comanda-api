@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, pruebas y build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: comanda
+          POSTGRES_PASSWORD: comanda
+          POSTGRES_DB: comanda_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U comanda -d comanda_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://comanda:comanda@localhost:5432/comanda_test?schema=public
+      JWT_ACCESS_SECRET: ci-secret-con-al-menos-32-caracteres-para-pruebas
+      JWT_ACCESS_TTL_SECONDS: 900
+      REFRESH_TOKEN_TTL_DAYS: 30
+      PASSWORD_RESET_TTL_MINUTES: 30
+      CORS_ORIGINS: '*'
+      THROTTLE_TTL_SECONDS: 60
+      THROTTLE_LIMIT: 1000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Aplicar migraciones
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas unitarias
+        run: npm run test
+
+      - name: Pruebas e2e
+        run: npm run test:e2e
+
+      - name: Compilar
+        run: npm run build

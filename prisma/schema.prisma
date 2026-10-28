@@ -1,0 +1,693 @@
+// Prisma schema - Fase 1: restaurantes, usuarios y autenticación
+//
+// Convenciones (REQUERIMIENTOS.md §6.2):
+// - Todas las tablas de negocio tienen restaurant_id.
+// - IDs UUID, creado_en/actualizado_en.
+// - Dinero como entero (se incorpora en fases posteriores).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  WAITER
+  KITCHEN
+  CASHIER
+}
+
+/// Área que prepara un producto (RF-11).
+enum PreparationArea {
+  KITCHEN
+  BAR
+}
+
+/// Estado de una versión de carta (RF-19).
+enum MenuVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Estado operativo de una mesa (RF-31).
+enum TableStatus {
+  FREE
+  OCCUPIED
+  TO_CHARGE
+}
+
+/// Estado de un pedido.
+enum OrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+/// Estado de un ítem del pedido (RF-45).
+enum OrderItemStatus {
+  PENDING
+  IN_PREPARATION
+  READY
+  SERVED
+  CANCELLED
+}
+
+/// Estado de una cuenta (RF-50 a RF-57).
+enum AccountStatus {
+  OPEN
+  CLOSED
+  VOIDED
+}
+
+/// Alcance de un descuento (RF-53).
+enum DiscountScope {
+  ITEM
+  ACCOUNT
+}
+
+/// Tipo de descuento: porcentaje en puntos base o valor fijo en unidad mínima.
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+/// Método de pago (RF-55).
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+/// Base para calcular la propina sugerida (RF-52).
+enum TipBase {
+  SUBTOTAL
+  TOTAL
+}
+
+model Restaurant {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String
+  slug     String  @unique
+  currency String  @default("COP")
+  timezone String  @default("America/Bogota")
+  isActive Boolean @default(true)
+
+  /// Configuración de cuentas (RF-51/RF-52/RF-53).
+  pricesIncludeTax             Boolean @default(false) @map("prices_include_tax")
+  tipEnabled                   Boolean @default(true) @map("tip_enabled")
+  tipSuggestedBps              Int     @default(1000) @map("tip_suggested_bps")
+  tipBase                      TipBase @default(TOTAL) @map("tip_base")
+  discountApprovalThresholdBps Int     @default(2000) @map("discount_approval_threshold_bps")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users               User[]
+  categories          Category[]
+  products            Product[]
+  variants            Variant[]
+  modifierGroups      ModifierGroup[]
+  modifiers           Modifier[]
+  priceRules          PriceRule[]
+  availabilityWindows AvailabilityWindow[]
+  combos              Combo[]
+  comboItems          ComboItem[]
+  menuVersions        MenuVersion[]
+  zones               Zone[]
+  tables              RestaurantTable[]
+  orders              Order[]
+  orderItems          OrderItem[]
+  orderItemModifiers  OrderItemModifier[]
+  taxes               Tax[]
+  accounts            Account[]
+  discounts           Discount[]
+  payments            Payment[]
+  splits              Split[]
+  splitItems          SplitItem[]
+
+  @@map("restaurants")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  restaurantId String?   @map("restaurant_id") @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  role         Role
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  restaurant          Restaurant?          @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  menuVersionsCreated MenuVersion[]        @relation("MenuVersionCreatedBy")
+  ordersWaited        Order[]              @relation("OrderWaiter")
+  itemsCancelled      OrderItem[]          @relation("OrderItemCancelledBy")
+  accountsOpened      Account[]            @relation("AccountOpenedBy")
+  accountsClosed      Account[]            @relation("AccountClosedBy")
+  accountsVoided      Account[]            @relation("AccountVoidedBy")
+  discountsApplied    Discount[]           @relation("DiscountAppliedBy")
+  discountsApproved   Discount[]           @relation("DiscountApprovedBy")
+  paymentsReceived    Payment[]            @relation("PaymentReceivedBy")
+
+  @@index([restaurantId, role])
+  @@index([restaurantId, isActive])
+  @@map("users")
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  tokenHash         String    @unique @map("token_hash")
+  familyId          String    @map("family_id") @db.Uuid
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  createdByIp       String?   @map("created_by_ip")
+  userAgent         String?   @map("user_agent")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 2 — Carta
+// ---------------------------------------------------------------------------
+
+model Category {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  name         String
+  description  String?
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  products   Product[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, isActive, sortOrder])
+  @@map("categories")
+}
+
+model Product {
+  id              String          @id @default(uuid()) @db.Uuid
+  restaurantId    String          @map("restaurant_id") @db.Uuid
+  categoryId      String          @map("category_id") @db.Uuid
+  name            String
+  description     String?
+  basePrice       Int             @map("base_price")
+  imageUrl        String?         @map("image_url")
+  preparationArea PreparationArea @map("preparation_area")
+  isAvailable     Boolean         @default(true) @map("is_available")
+  isActive        Boolean         @default(true) @map("is_active")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  restaurant          Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  category            Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants            Variant[]
+  priceRules          PriceRule[]
+  availabilityWindows AvailabilityWindow[]
+  modifierGroups      ProductModifierGroup[]
+  comboItems          ComboItem[]
+  orderItems          OrderItem[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, categoryId, isActive])
+  @@index([restaurantId, preparationArea])
+  @@map("products")
+}
+
+model Variant {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  name         String
+  price        Int
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceRules PriceRule[]
+  comboItems ComboItem[]
+  orderItems OrderItem[]
+
+  @@unique([productId, name])
+  @@index([restaurantId, productId])
+  @@map("variants")
+}
+
+model ModifierGroup {
+  id            String   @id @default(uuid()) @db.Uuid
+  restaurantId  String   @map("restaurant_id") @db.Uuid
+  name          String
+  isRequired    Boolean  @default(false) @map("is_required")
+  minSelections Int      @default(0) @map("min_selections")
+  maxSelections Int      @default(1) @map("max_selections")
+  sortOrder     Int      @default(0) @map("sort_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  modifiers  Modifier[]
+  products   ProductModifierGroup[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, isActive])
+  @@map("modifier_groups")
+}
+
+model Modifier {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  groupId      String   @map("group_id") @db.Uuid
+  name         String
+  extraPrice   Int      @default(0) @map("extra_price")
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant         Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  group              ModifierGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  orderItemModifiers OrderItemModifier[]
+
+  @@unique([groupId, name])
+  @@index([restaurantId, groupId])
+  @@map("modifiers")
+}
+
+model ProductModifierGroup {
+  productId String @map("product_id") @db.Uuid
+  groupId   String @map("group_id") @db.Uuid
+  sortOrder Int    @default(0) @map("sort_order")
+
+  product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group   ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([productId, groupId])
+  @@map("product_modifier_groups")
+}
+
+model PriceRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  variantId    String?  @map("variant_id") @db.Uuid
+  name         String
+  price        Int
+  /// Bitmask: bit 0 = lunes … bit 6 = domingo (127 = todos los días).
+  daysOfWeek   Int      @default(127) @map("days_of_week") @db.SmallInt
+  /// HH:mm. Si endTime < startTime, la ventana cruza la medianoche.
+  startTime    String   @map("start_time") @db.VarChar(5)
+  endTime      String   @map("end_time") @db.VarChar(5)
+  priority     Int      @default(0)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant    Variant?   @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@index([restaurantId, productId, isActive])
+  @@map("price_rules")
+}
+
+model AvailabilityWindow {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  /// Bitmask: bit 0 = lunes … bit 6 = domingo (127 = todos los días).
+  daysOfWeek   Int      @default(127) @map("days_of_week") @db.SmallInt
+  /// HH:mm. Si endTime < startTime, la ventana cruza la medianoche.
+  startTime    String   @map("start_time") @db.VarChar(5)
+  endTime      String   @map("end_time") @db.VarChar(5)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, productId, isActive])
+  @@map("availability_windows")
+}
+
+model Combo {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  name         String
+  description  String?
+  price        Int
+  imageUrl     String?  @map("image_url")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  items      ComboItem[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, isActive])
+  @@map("combos")
+}
+
+model ComboItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  restaurantId String  @map("restaurant_id") @db.Uuid
+  comboId      String  @map("combo_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  variantId    String? @map("variant_id") @db.Uuid
+  quantity     Int     @default(1)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  combo      Combo      @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant    Variant?   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([comboId])
+  @@map("combo_items")
+}
+
+model MenuVersion {
+  id           String            @id @default(uuid()) @db.Uuid
+  restaurantId String            @map("restaurant_id") @db.Uuid
+  name         String
+  status       MenuVersionStatus @default(DRAFT)
+  /// Estructura completa de la carta al momento de crear la versión.
+  snapshot     Json
+  publishedAt  DateTime?         @map("published_at")
+  createdById  String?           @map("created_by_id") @db.Uuid
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("MenuVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, status, publishedAt])
+  @@map("menu_versions")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 — Zonas, mesas y pedidos
+// ---------------------------------------------------------------------------
+
+model Zone {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  name         String
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  tables     RestaurantTable[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, isActive, sortOrder])
+  @@map("zones")
+}
+
+/// Mesa física del restaurante (RF-30/RF-31). No tiene baja lógica: se
+/// conserva para el historial de pedidos.
+model RestaurantTable {
+  id           String      @id @default(uuid()) @db.Uuid
+  restaurantId String      @map("restaurant_id") @db.Uuid
+  zoneId       String      @map("zone_id") @db.Uuid
+  name         String
+  capacity     Int
+  status       TableStatus @default(FREE)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  zone       Zone       @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  orders     Order[]
+  accounts   Account[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, zoneId, status])
+  @@map("tables")
+}
+
+model Order {
+  id           String      @id @default(uuid()) @db.Uuid
+  restaurantId String      @map("restaurant_id") @db.Uuid
+  tableId      String      @map("table_id") @db.Uuid
+  waiterId     String      @map("waiter_id") @db.Uuid
+  status       OrderStatus @default(OPEN)
+  guests       Int
+  notes        String?
+  openedAt     DateTime    @default(now()) @map("opened_at")
+  closedAt     DateTime?   @map("closed_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  table      RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  waiter     User            @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: Restrict)
+  items      OrderItem[]
+  account    Account?
+
+  @@index([restaurantId, status, openedAt])
+  @@index([tableId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                  String          @id @default(uuid()) @db.Uuid
+  restaurantId        String          @map("restaurant_id") @db.Uuid
+  orderId             String          @map("order_id") @db.Uuid
+  productId           String          @map("product_id") @db.Uuid
+  variantId           String?         @map("variant_id") @db.Uuid
+  productNameSnapshot String          @map("product_name_snapshot")
+  variantNameSnapshot String?         @map("variant_name_snapshot")
+  quantity            Int
+  unitPrice           Int             @map("unit_price")
+  /// Extras de modificadores de toda la línea (no por unidad).
+  modifiersTotal      Int             @default(0) @map("modifiers_total")
+  lineTotal           Int             @map("line_total")
+  notes               String?
+  preparationArea     PreparationArea @map("preparation_area")
+  status              OrderItemStatus @default(PENDING)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  sentAt              DateTime?       @map("sent_at")
+  startedAt           DateTime?       @map("started_at")
+  readyAt             DateTime?       @map("ready_at")
+  servedAt            DateTime?       @map("served_at")
+  cancelledAt         DateTime?       @map("cancelled_at")
+  cancelledById       String?         @map("cancelled_by_id") @db.Uuid
+  cancelReason        String?         @map("cancel_reason")
+
+  restaurant  Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  order       Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     Variant?            @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  cancelledBy User?               @relation("OrderItemCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  modifiers   OrderItemModifier[]
+  discounts   Discount[]
+  splitItems  SplitItem[]
+
+  @@index([restaurantId, preparationArea, status, createdAt])
+  @@index([restaurantId, orderId])
+  @@map("order_items")
+}
+
+model OrderItemModifier {
+  id           String @id @default(uuid()) @db.Uuid
+  restaurantId String @map("restaurant_id") @db.Uuid
+  orderItemId  String @map("order_item_id") @db.Uuid
+  modifierId   String @map("modifier_id") @db.Uuid
+  nameSnapshot String @map("name_snapshot")
+  extraPrice   Int    @map("extra_price")
+  quantity     Int    @default(1)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  orderItem  OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier   Modifier   @relation(fields: [modifierId], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, orderItemId])
+  @@map("order_item_modifiers")
+}
+
+// ---------------------------------------------------------------------------
+// Fase 4 — Cuentas
+// ---------------------------------------------------------------------------
+
+/// Impuesto configurable por restaurante (RF-51). `rate_bps` usa puntos base.
+model Tax {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  name         String
+  rateBps      Int      @map("rate_bps")
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, isActive, sortOrder])
+  @@map("taxes")
+}
+
+/// Cuenta de un pedido (RF-50 a RF-57). Se crea junto con el pedido.
+model Account {
+  id            String        @id @default(uuid()) @db.Uuid
+  restaurantId  String        @map("restaurant_id") @db.Uuid
+  tableId       String        @map("table_id") @db.Uuid
+  orderId       String        @unique @map("order_id") @db.Uuid
+  status        AccountStatus @default(OPEN)
+  subtotal      Int           @default(0)
+  discountTotal Int           @default(0) @map("discount_total")
+  taxTotal      Int           @default(0) @map("tax_total")
+  tipTotal      Int           @default(0) @map("tip_total")
+  total         Int           @default(0)
+  paidTotal     Int           @default(0) @map("paid_total")
+  tipBps        Int           @default(0) @map("tip_bps")
+  openedById    String        @map("opened_by_id") @db.Uuid
+  closedById    String?       @map("closed_by_id") @db.Uuid
+  closedAt      DateTime?     @map("closed_at")
+  voidedById    String?       @map("voided_by_id") @db.Uuid
+  voidedAt      DateTime?     @map("voided_at")
+  voidReason    String?       @map("void_reason")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  table      RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  order      Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  openedBy   User            @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy   User?           @relation("AccountClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  voidedBy   User?           @relation("AccountVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  discounts  Discount[]
+  payments   Payment[]
+  splits     Split[]
+
+  @@index([restaurantId, status, createdAt])
+  @@index([tableId])
+  @@map("accounts")
+}
+
+/// Descuento por ítem o por cuenta (RF-53).
+model Discount {
+  id           String        @id @default(uuid()) @db.Uuid
+  restaurantId String        @map("restaurant_id") @db.Uuid
+  accountId    String        @map("account_id") @db.Uuid
+  orderItemId  String?       @map("order_item_id") @db.Uuid
+  scope        DiscountScope
+  type         DiscountType
+  /// PERCENT: puntos base. FIXED: unidad mínima de la moneda.
+  value        Int
+  reason       String
+  appliedById  String        @map("applied_by_id") @db.Uuid
+  approvedById String?       @map("approved_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  orderItem  OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  appliedBy  User       @relation("DiscountAppliedBy", fields: [appliedById], references: [id], onDelete: Restrict)
+  approvedBy User?      @relation("DiscountApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, accountId])
+  @@index([orderItemId])
+  @@map("discounts")
+}
+
+/// Pago total o parcial de una cuenta (RF-55).
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  restaurantId String        @map("restaurant_id") @db.Uuid
+  accountId    String        @map("account_id") @db.Uuid
+  splitId      String?       @map("split_id") @db.Uuid
+  method       PaymentMethod
+  amount       Int
+  reference    String?
+  receivedById String        @map("received_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  split      Split?     @relation(fields: [splitId], references: [id], onDelete: SetNull)
+  receivedBy User       @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, accountId, createdAt])
+  @@index([splitId])
+  @@map("payments")
+}
+
+/// División de una cuenta por comensal o por ítems (RF-54).
+model Split {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  accountId    String   @map("account_id") @db.Uuid
+  label        String
+  amount       Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  items      SplitItem[]
+  payments   Payment[]
+
+  @@index([restaurantId, accountId])
+  @@map("splits")
+}
+
+model SplitItem {
+  id           String @id @default(uuid()) @db.Uuid
+  restaurantId String @map("restaurant_id") @db.Uuid
+  splitId      String @map("split_id") @db.Uuid
+  orderItemId  String @map("order_item_id") @db.Uuid
+  quantity     Int
+  amount       Int
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  split      Split      @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  orderItem  OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([splitId, orderItemId])
+  @@index([restaurantId, splitId])
+  @@map("split_items")
+}
